@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.playwright-cli/
+.env
+data/
+*.sqlite*
+node_modules/
+evidence/*.png
+evidence/*.json
+!evidence/verification.md

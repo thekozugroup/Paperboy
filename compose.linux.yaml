@@ -1,0 +1,6 @@
+# Linux NAS: host networking makes multicast printer discovery work across the LAN.
+# The setup code and owner password protect access when listening on the LAN.
+services:
+  paperboy:
+    network_mode: host
+    ports: !reset []

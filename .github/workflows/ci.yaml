@@ -1,0 +1,54 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check paperboy tests
+      - run: ruff format --check paperboy tests
+      - run: pytest -q
+      - run: node --check web/app.js
+      - run: docker compose config --quiet
+      - run: docker compose build
+      - run: docker compose up -d --wait
+      - run: curl --fail http://localhost:8025/api/health
+      - run: docker compose down
+        if: always()
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: pip install -r requirements-dev.txt
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start design preview
+        run: |
+          PAPERBOY_DEMO=1 PAPERBOY_DATA_DIR=/tmp/paperboy-preview nohup uvicorn paperboy.app:app --host 127.0.0.1 --port 8026 > /tmp/paperboy-preview.log 2>&1 &
+          python - <<'PY'
+          import time, urllib.request
+          for attempt in range(30):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:8026/api/health', timeout=1)
+                  break
+              except OSError:
+                  time.sleep(0.2)
+          else:
+              raise SystemExit('Preview failed to start')
+          PY
+      - run: npm run test:browser

@@ -1,0 +1,54 @@
+name: paperboy
+services:
+  paperboy:
+    build:
+      context: .
+      target: app
+    image: paperboy:local
+    restart: unless-stopped
+    ports:
+      - "${PAPERBOY_BIND:-127.0.0.1}:${PAPERBOY_PORT:-8025}:8025"
+    environment:
+      PAPERBOY_SECURE_COOKIE: "${PAPERBOY_SECURE_COOKIE:-0}"
+    volumes:
+      - paperboy-data:/data
+      - cups-config:/etc/cups
+      - cups-spool:/var/spool/cups
+      - converter-socket:/run/paperboy
+    depends_on:
+      converter:
+        condition: service_healthy
+    mem_limit: 512m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+  converter:
+    build:
+      context: .
+      target: converter
+    image: paperboy-converter:local
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    volumes:
+      - converter-socket:/run/paperboy
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/paperboy/convert.sock'); s.close()"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+volumes:
+  paperboy-data:
+  cups-config:
+  cups-spool:
+  converter-socket:

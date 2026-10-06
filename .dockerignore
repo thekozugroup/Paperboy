@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+data
+evidence
+__pycache__
+.pytest_cache
+.ruff_cache
+.playwright-cli
+node_modules

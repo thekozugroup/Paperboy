@@ -1,0 +1,8 @@
+fastapi==0.142.2
+uvicorn==0.54.0
+httpx==0.28.1
+cryptography==50.0.2
+zeroconf==0.151.5
+Pillow==12.3.0
+PyMuPDF==1.28.2
+reportlab==5.0.1
