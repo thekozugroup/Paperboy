@@ -55,7 +55,7 @@ jobs:
       - name: Start design preview
         run: |
           PAPERBOY_DEMO=1 PAPERBOY_DATA_DIR=/tmp/paperboy-preview PAPERBOY_HOST=127.0.0.1 PAPERBOY_PORT=8026 nohup target/debug/paperboy > /tmp/paperboy-preview.log 2>&1 &
-          for attempt in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8026/api/health; then exit 0; fi
             sleep 0.2
           done

@@ -131,14 +131,6 @@ async fn install(
 async fn main() -> Result<()> {
     let path = PathBuf::from(env::var("PAPERBOY_UPDATE_DIR").unwrap_or_else(|_| "/updates".into()));
     fs::create_dir_all(&path)?;
-    let lock = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path.join("updater.lock"))?;
-    lock.try_lock()
-        .map_err(|_| anyhow::anyhow!("An updater is already running for this installation."))?;
     // The app writes requests as uid 1000; the updater never mounts its secrets or database.
     let project = env::var("PAPERBOY_PROJECT").unwrap_or_else(|_| "paperboy".into());
     if project.is_empty()
@@ -153,6 +145,35 @@ async fn main() -> Result<()> {
         updates::version(&pin)?;
     }
     let engine = Engine::open(Path::new("/var/run/docker.sock")).await?;
+    // Complete the self-handoff before taking the predecessor's exclusive lock.
+    if path.join("handoff.json").exists() {
+        let old: deployment::Saved =
+            serde_json::from_value(updates::read(&path.join("handoff.json")))?;
+        let info = engine.inspect(&old.id).await?;
+        deployment::validate(&info, &project, "updater")?;
+        // Only a replacement with the original name can finish the handoff.
+        let own = env::var("HOSTNAME").unwrap_or_default();
+        if !old.id.starts_with(&own)
+            && !own.is_empty()
+            && info["Name"] == format!("/{}", old.backup)
+        {
+            let current = engine.inspect(&own).await?;
+            deployment::validate(&current, &project, "updater")?;
+            if current["Name"] != format!("/{}", old.name) {
+                bail!("Only the managed replacement can finish the updater handoff.");
+            }
+            engine.remove(&old.id).await?;
+            fs::remove_file(path.join("handoff.json"))?;
+        }
+    }
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path.join("updater.lock"))?;
+    lock.try_lock()
+        .map_err(|_| anyhow::anyhow!("An updater is already running for this installation."))?;
     let status = Arc::new(Mutex::new(updates::read(&path.join("status.json"))));
     set(
         &status,
@@ -179,18 +200,6 @@ async fn main() -> Result<()> {
         }
     });
     deployment::recover(&engine, &path, &project).await?;
-    if path.join("handoff.json").exists() {
-        let old: deployment::Saved =
-            serde_json::from_value(updates::read(&path.join("handoff.json")))?;
-        let info = engine.inspect(&old.id).await?;
-        deployment::validate(&info, &project, "updater")?;
-        // Only a replacement with the original name can finish the handoff.
-        let own = env::var("HOSTNAME").unwrap_or_default();
-        if !old.id.starts_with(&own) && info["Name"] == format!("/{}", old.backup) {
-            engine.remove(&old.id).await?;
-            fs::remove_file(path.join("handoff.json"))?;
-        }
-    }
     if !path.join("policy.json").exists() {
         updates::atomic(
             &path.join("policy.json"),
