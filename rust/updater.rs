@@ -131,6 +131,14 @@ async fn install(
 async fn main() -> Result<()> {
     let path = PathBuf::from(env::var("PAPERBOY_UPDATE_DIR").unwrap_or_else(|_| "/updates".into()));
     fs::create_dir_all(&path)?;
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path.join("updater.lock"))?;
+    lock.try_lock()
+        .map_err(|_| anyhow::anyhow!("An updater is already running for this installation."))?;
     // The app writes requests as uid 1000; the updater never mounts its secrets or database.
     let project = env::var("PAPERBOY_PROJECT").unwrap_or_else(|_| "paperboy".into());
     if project.is_empty()
@@ -233,7 +241,16 @@ async fn main() -> Result<()> {
                     .and_then(|v| updates::version(v).ok()),
             )
             .is_some_and(|(v, current)| v > current);
-        let requested = manual && wanted["version"] == target;
+        let requested = manual
+            && wanted["version"] == target
+            && updates::version(target)
+                .ok()
+                .zip(
+                    app["version"]
+                        .as_str()
+                        .and_then(|v| updates::version(v).ok()),
+                )
+                .is_some_and(|(selected, current)| selected >= current);
         if manual {
             set(&status, json!({"handled_install":wanted["nonce"]}));
             updates::atomic(&path.join("status.json"), &*status.lock().unwrap())?;
