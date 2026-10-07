@@ -5,6 +5,7 @@ Email a file. Find it on your home printer.
 Paperboy is a small, self-hosted app for family printing. Connect Resend, choose a local
 printer, and approve the people who can print. Their email attachments enter a persistent
 queue and print automatically. Everyone else is blocked before attachments are downloaded.
+The service and conversion tools run as native Rust binaries.
 
 ![Paperboy Activity screen, showing clearly labeled design-preview sample data](docs/activity.png)
 
@@ -122,7 +123,7 @@ If you forget your owner password, stop Paperboy and run:
 
 ```sh
 docker compose stop paperboy
-docker compose run --rm --no-deps --entrypoint runuser paperboy -u paperboy -- python -m paperboy.manage reset-password
+docker compose run --rm --no-deps --entrypoint runuser paperboy -u paperboy -- paperboy reset-password
 docker compose up -d
 docker compose logs paperboy
 ```
@@ -132,34 +133,40 @@ It preserves your printer, email connection, queue, and people.
 
 ## Development
 
-File conversion runs in the native Rust `paperboy-tools` process inside the networkless
-converter container. It uses Rust image/text rendering and PDF creation, with LibreOffice
-for Office files and Poppler for PDF rasterization. These external engines remain sandboxed;
-using Rust does not make their native code memory-safe.
+The API, owner access, Resend polling, durable queue, discovery, and IPP communication are
+implemented in Rust. The app image has no Python interpreter or Python service dependencies.
+The networkless `paperboy-tools` converter uses Rust image/text rendering and PDF creation,
+LibreOffice for Office files, and Poppler for PDF rasterization. CUPS manages printer delivery.
+Unsafe code is forbidden in Paperboy's own Rust code; this does not make all third-party
+libraries, document engines, or printer drivers memory-safe.
+
+Existing data volumes upgrade in place: SQLite layout, encrypted API keys, password hashes,
+and saved sessions are compatible. Back up your named volumes before changing versions.
 
 ```sh
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
-docker compose build converter
-.venv/bin/python scripts/converter-qa.py
-```
-
-```sh
+cargo fmt --all -- --check
+docker compose build
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-PAPERBOY_DATA_DIR=./data .venv/bin/uvicorn paperboy.app:app --reload --port 8025
-.venv/bin/pytest
-.venv/bin/ruff check paperboy tests
+.venv/bin/python scripts/converter-qa.py
+docker build --target printer-qa -t paperboy-printer:qa .
+.venv/bin/python scripts/runtime-qa.py
 ```
+
+The Docker runtime check uses a private test network, disposable data, and a software printer.
+Python is used only for fixture creation and independent PDF validation. The previous Python
+implementation remains under `tests/legacy/` as a compatibility reference (`.venv/bin/pytest`).
 
 For browser layout and accessibility checks, start the preview below, then run
 `npm ci`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The local Python server supports PDF, image, and text conversion. Use Docker for Office conversion
-and the bundled CUPS service. A read-only design preview is available with:
+Use Docker for printing with the bundled converter and CUPS service.
+Run a read-only native design preview with:
 
 ```sh
-PAPERBOY_DEMO=1 PAPERBOY_DATA_DIR=/tmp/paperboy-preview .venv/bin/uvicorn paperboy.app:app --port 8026
+PAPERBOY_DEMO=1 PAPERBOY_DATA_DIR=/tmp/paperboy-preview PAPERBOY_HOST=127.0.0.1 PAPERBOY_PORT=8026 cargo run --locked --bin paperboy
 ```
 
 Preview mode uses clearly labeled sample data and never prints or contacts Resend.

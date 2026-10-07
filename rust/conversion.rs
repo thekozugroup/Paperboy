@@ -339,8 +339,11 @@ fn convert_tiff(source: &Path, output: &Path, paper: &str, max_pages: usize) -> 
         ColorType,
         decoder::{Decoder, DecodingResult, Limits},
     };
-    let mut decoder = Decoder::new(std::io::BufReader::new(fs::File::open(source)?))?
-        .with_limits(Limits::default());
+    let mut limits = Limits::default();
+    limits.decoding_buffer_size = 160 * 1024 * 1024;
+    limits.intermediate_buffer_size = 64 * 1024 * 1024;
+    let mut decoder =
+        Decoder::new(std::io::BufReader::new(fs::File::open(source)?))?.with_limits(limits);
     let mut document = Document::new(paper);
     loop {
         if document.pages.len() >= max_pages {
@@ -351,7 +354,36 @@ fn convert_tiff(source: &Path, output: &Path, paper: &str, max_pages: usize) -> 
             bail!("This image is too large to process safely.");
         }
         let color = decoder.colortype()?;
+        if decoder
+            .get_tag_unsigned::<u16>(tiff::tags::Tag::PlanarConfiguration)
+            .unwrap_or(1)
+            != 1
+        {
+            bail!("This TIFF layout is unsupported. Export it as PDF.");
+        }
         let image = match (color, decoder.read_image()?) {
+            (ColorType::Gray(1), DecodingResult::U8(data)) => {
+                let stride = width.div_ceil(8) as usize;
+                if data.len() != stride * height as usize {
+                    bail!("Invalid TIFF image.");
+                }
+                let pixels = data
+                    .chunks_exact(stride)
+                    .flat_map(|row| {
+                        (0..width as usize).map(move |x| {
+                            if row[x / 8] & (128 >> (x % 8)) != 0 {
+                                255
+                            } else {
+                                0
+                            }
+                        })
+                    })
+                    .collect();
+                DynamicImage::ImageLuma8(
+                    image::GrayImage::from_raw(width, height, pixels)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+                )
+            }
             (ColorType::RGB(8), DecodingResult::U8(data)) => DynamicImage::ImageRgb8(
                 image::RgbImage::from_raw(width, height, data)
                     .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
@@ -364,8 +396,50 @@ fn convert_tiff(source: &Path, output: &Path, paper: &str, max_pages: usize) -> 
                 image::GrayImage::from_raw(width, height, data)
                     .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
             ),
+            (ColorType::GrayA(8), DecodingResult::U8(data)) => DynamicImage::ImageLumaA8(
+                image::ImageBuffer::from_raw(width, height, data)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+            ),
+            (ColorType::RGB(16), DecodingResult::U16(data)) => DynamicImage::ImageRgb16(
+                image::ImageBuffer::from_raw(width, height, data)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+            ),
+            (ColorType::RGBA(16), DecodingResult::U16(data)) => DynamicImage::ImageRgba16(
+                image::ImageBuffer::from_raw(width, height, data)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+            ),
+            (ColorType::Gray(16), DecodingResult::U16(data)) => DynamicImage::ImageLuma16(
+                image::ImageBuffer::from_raw(width, height, data)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+            ),
+            (ColorType::GrayA(16), DecodingResult::U16(data)) => DynamicImage::ImageLumaA16(
+                image::ImageBuffer::from_raw(width, height, data)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+            ),
+            (ColorType::CMYK(8), DecodingResult::U8(data)) => {
+                let rgb = data
+                    .chunks_exact(4)
+                    .flat_map(|p| {
+                        p[..3].iter().map(move |c| {
+                            ((255 - u16::from(*c)) * (255 - u16::from(p[3])) / 255) as u8
+                        })
+                    })
+                    .collect();
+                DynamicImage::ImageRgb8(
+                    image::RgbImage::from_raw(width, height, rgb)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid TIFF image."))?,
+                )
+            }
             _ => bail!("This TIFF color format is unsupported. Export it as PDF."),
         };
+        let mut image = image;
+        if let Some(orientation) = image::metadata::Orientation::from_exif(
+            decoder
+                .get_tag_unsigned::<u16>(tiff::tags::Tag::Orientation)
+                .unwrap_or(1) as u8,
+        ) {
+            image.apply_orientation(orientation);
+        }
         document.image(image)?;
         if !decoder.more_images() {
             break;

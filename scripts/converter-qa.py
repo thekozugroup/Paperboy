@@ -22,6 +22,9 @@ def main():
             save_all=True,
             append_images=[Image.new("RGB", (120, 80), "gray")],
         )
+        Image.new("1", (121, 80), 1).save(inputs / "fax.tif")
+        Image.new("I;16", (120, 80), 65535).save(inputs / "deep-gray.tif")
+        Image.new("CMYK", (120, 80), (0, 0, 0, 0)).save(inputs / "cmyk.tif")
         (inputs / "notes.txt").write_text(
             "Paperboy\nUnicode text: café, résumé.\n", encoding="utf-8"
         )
@@ -100,7 +103,7 @@ def main():
                     for page in converted
                 ), source.name
             print(f"{source.name}: {expected} safe page(s)")
-    print("Rust Docker converter: all seven checks passed.")
+    print("Rust Docker converter: all ten checks passed.")
 
 
 if __name__ == "__main__":

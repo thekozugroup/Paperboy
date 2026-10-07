@@ -1,17 +1,16 @@
 FROM rust:1.90-slim-bookworm AS rust-builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+# Cache dependency compilation separately from Paperboy's source.
+RUN mkdir rust \
+    && printf '%s\n' '#![forbid(unsafe_code)]' > rust/lib.rs \
+    && printf '%s\n' 'fn main() {}' > rust/main.rs \
+    && printf '%s\n' 'fn main() {}' > rust/tools.rs \
+    && cargo build --release --locked \
+    && rm -rf rust target/release/.fingerprint/paperboy-* target/release/deps/paperboy* target/release/paperboy*
 COPY rust ./rust
-RUN cargo build --release --locked
-
-FROM python:3.12-slim-bookworm AS base
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-WORKDIR /app
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && groupadd --gid 1000 paperboy \
-    && useradd --uid 1000 --gid paperboy --create-home paperboy \
-    && mkdir -p /run/paperboy && chown paperboy:paperboy /run/paperboy
+RUN cargo build --release --locked \
+    && sha256sum Cargo.toml Cargo.lock rust/*.rs > /build/source.sha256
 
 FROM debian:bookworm-slim AS converter
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,18 +20,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && groupadd --gid 1000 paperboy && useradd --uid 1000 --gid paperboy --create-home paperboy \
     && mkdir -p /run/paperboy && chown paperboy:paperboy /run/paperboy
 COPY --from=rust-builder /build/target/release/paperboy-tools /usr/local/bin/paperboy-tools
+COPY --from=rust-builder /build/source.sha256 /source.sha256
 USER paperboy
 ENV HOME=/tmp
 CMD ["paperboy-tools"]
 
-FROM base AS app
+FROM debian:bookworm-slim AS app
+WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cups cups-client cups-filters libcups2-dev gcc tini \
-    && pip install --no-cache-dir pycups==2.0.4 \
-    && apt-get purge -y gcc libcups2-dev && apt-get autoremove -y \
+    cups cups-client cups-filters ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 paperboy \
+    && useradd --uid 1000 --gid paperboy --create-home paperboy \
+    && mkdir -p /run/paperboy && chown paperboy:paperboy /run/paperboy \
     && usermod -aG lp,lpadmin paperboy
-COPY paperboy ./paperboy
+COPY --from=rust-builder /build/target/release/paperboy /usr/local/bin/paperboy
+COPY --from=rust-builder /build/source.sha256 /app/source.sha256
 COPY web ./web
 COPY docker/cupsd.conf /etc/cups/cupsd.conf
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -40,5 +43,16 @@ RUN chmod +x /entrypoint.sh
 ENV PAPERBOY_DATA_DIR=/data PAPERBOY_CONVERTER_SOCKET=/run/paperboy/convert.sock \
     CUPS_SERVER=/run/cups/cups.sock
 EXPOSE 8025
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8025/api/health', timeout=3)"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD paperboy health
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
+
+# Software printer used only by the repeatable Docker integration checks.
+FROM app AS printer-qa
+RUN apt-get update && apt-get install -y --no-install-recommends avahi-daemon dbus \
+    && rm -rf /var/lib/apt/lists/*
+HEALTHCHECK NONE
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["mkdir -p /run/dbus /tmp/printed; dbus-daemon --system; avahi-daemon --daemonize; exec ippeveprinter -p 631 -f application/pdf -k -d /tmp/printed 'Paperboy QA'"]
+
+# A plain docker build still produces the production app.
+FROM app AS runtime

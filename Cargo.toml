@@ -13,6 +13,10 @@ path = "rust/lib.rs"
 name = "paperboy-tools"
 path = "rust/tools.rs"
 
+[[bin]]
+name = "paperboy"
+path = "rust/main.rs"
+
 [dependencies]
 ab_glyph = "0.2"
 anyhow = "1"
@@ -20,16 +24,29 @@ axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 fernet = { version = "0.2", default-features = false, features = ["rustcrypto"] }
 flate2 = "1"
+futures-util = "0.3"
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "tiff", "webp", "bmp"] }
+ipp = { version = "7", default-features = false }
+mdns-sd = { version = "0.21", default-features = false }
 nix = { version = "0.30", features = ["signal", "process"] }
 pdf-writer = "0.14"
+percent-encoding = "2"
+rand = "0.8"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+scrypt = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
 tempfile = "3"
 tiff = "0.11"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "limit"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

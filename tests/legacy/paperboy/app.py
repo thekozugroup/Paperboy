@@ -23,7 +23,7 @@ from paperboy.resend import Resend, ResendError
 from paperboy.store import Store, now
 from paperboy.worker import Worker
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+WEB = Path(__file__).resolve().parents[3] / "web"
 
 
 def email_address(value):
