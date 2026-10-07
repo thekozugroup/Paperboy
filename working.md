@@ -2,7 +2,9 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
-Current: implementation and apple.com-inspired UI refinement complete and locally verified.
+Current: migrating service/tooling to Rust in verified stages. Stage 1 replaces the isolated
+converter with a native Rust binary and is verified/running; stage 2 migrates the app and queue while retaining
+settings, owner access, API contracts, and print safety.
 Public repository: https://github.com/thekozugroup/Paperboy.
 
 Acceptance:
@@ -28,5 +30,6 @@ pill-shaped controls, open activity/people lists, and consistent setup/settings 
 Verified: 32 layout/accessibility checks, complete mocked setup flows, keyboard access,
 44px touch targets, and six owner-screen checks against the rebuilt Docker service.
 
-Next: configure real Resend receiving and a physical printer, then confirm a household attachment prints.
+Next: complete the Rust API/worker migration, run security and compatibility checks,
+and commit/push the verified service. Household acceptance still needs real Resend and a printer.
 See evidence/verification.md for the precise verification scope.

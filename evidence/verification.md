@@ -51,6 +51,22 @@ logic changed.
 - The running container matches all 30 local application/web files. Combined SHA-256:
   `6ff750305446dea35c26fa1565a3e3a432fa82c92612f1ceb078a5cb7abb8d07`.
 
+## Rust migration — converter checkpoint
+
+The converter service now runs `paperboy-tools`, a native Rust binary with unsafe code
+forbidden in Paperboy's own crate. The API/queue migration is the next stage.
+
+- Six Rust checks passed: PDF rebuilding, invalid options, process deadlines, request body
+  bounds without a content length, and concurrency limits. Clippy and formatting passed.
+- The actual read-only, networkless Docker image passed seven repeatable conversion checks
+  (`scripts/converter-qa.py`): PDF sanitization, RTF, PNG, UTF-8 text, multipage TIFF, and
+  rejection of locked PDFs and excessive pages.
+- DOCX, XLSX, PPTX, PDF, PNG, TXT, and TIFF also passed through the live Unix-socket service.
+  Output PDFs opened successfully, used Letter pages, and contained no links or embedded files.
+- Both services are healthy. The existing app accepts the Rust converter's response contract.
+- Rust orchestrates LibreOffice and Poppler; their native parsers remain in the isolated
+  container. This is not a claim that every dependency or printer driver is memory-safe.
+
 ## Limits of this evidence
 
 - Resend was verified against current official receiving API documentation. No live account

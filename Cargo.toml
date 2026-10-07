@@ -1,0 +1,40 @@
+[package]
+name = "paperboy"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.90"
+license = "AGPL-3.0-only"
+description = "Private email-to-print for your home"
+
+[lib]
+path = "rust/lib.rs"
+
+[[bin]]
+name = "paperboy-tools"
+path = "rust/tools.rs"
+
+[dependencies]
+ab_glyph = "0.2"
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+fernet = { version = "0.2", default-features = false, features = ["rustcrypto"] }
+flate2 = "1"
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "tiff", "webp", "bmp"] }
+nix = { version = "0.30", features = ["signal", "process"] }
+pdf-writer = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tiff = "0.11"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "limit"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

@@ -8,3 +8,5 @@ __pycache__
 .ruff_cache
 .playwright-cli
 node_modules
+
+target

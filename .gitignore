@@ -10,3 +10,5 @@ node_modules/
 evidence/*.png
 evidence/*.json
 !evidence/verification.md
+
+target/

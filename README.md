@@ -132,6 +132,18 @@ It preserves your printer, email connection, queue, and people.
 
 ## Development
 
+File conversion runs in the native Rust `paperboy-tools` process inside the networkless
+converter container. It uses Rust image/text rendering and PDF creation, with LibreOffice
+for Office files and Poppler for PDF rasterization. These external engines remain sandboxed;
+using Rust does not make their native code memory-safe.
+
+```sh
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+docker compose build converter
+.venv/bin/python scripts/converter-qa.py
+```
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt

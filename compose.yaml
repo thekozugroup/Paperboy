@@ -42,7 +42,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/paperboy/convert.sock'); s.close()"]
+      test: ["CMD", "paperboy-tools", "health"]
       interval: 10s
       timeout: 3s
       start_period: 20s

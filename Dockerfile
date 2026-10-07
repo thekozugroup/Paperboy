@@ -1,3 +1,9 @@
+FROM rust:1.90-slim-bookworm AS rust-builder
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN cargo build --release --locked
+
 FROM python:3.12-slim-bookworm AS base
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
@@ -7,14 +13,17 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --uid 1000 --gid paperboy --create-home paperboy \
     && mkdir -p /run/paperboy && chown paperboy:paperboy /run/paperboy
 
-FROM base AS converter
+FROM debian:bookworm-slim AS converter
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libreoffice-writer libreoffice-calc libreoffice-impress fonts-dejavu-core fonts-noto-core \
-    && rm -rf /var/lib/apt/lists/*
-COPY paperboy ./paperboy
+    libreoffice-writer libreoffice-calc libreoffice-impress poppler-utils \
+    fonts-dejavu-core fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 paperboy && useradd --uid 1000 --gid paperboy --create-home paperboy \
+    && mkdir -p /run/paperboy && chown paperboy:paperboy /run/paperboy
+COPY --from=rust-builder /build/target/release/paperboy-tools /usr/local/bin/paperboy-tools
 USER paperboy
 ENV HOME=/tmp
-CMD ["uvicorn", "paperboy.converter:app", "--uds", "/run/paperboy/convert.sock", "--no-access-log"]
+CMD ["paperboy-tools"]
 
 FROM base AS app
 RUN apt-get update && apt-get install -y --no-install-recommends \
