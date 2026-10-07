@@ -2,7 +2,8 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
-Current: implementation complete and locally verified. Public repository: https://github.com/thekozugroup/Paperboy.
+Current: implementation and apple.com-inspired UI refinement complete and locally verified.
+Public repository: https://github.com/thekozugroup/Paperboy.
 
 Acceptance:
 - Resend receiving API polling without public inbound ports.
@@ -21,6 +22,11 @@ IPP discovery/manual pairing; persistent queue and crash safety; guided setup; r
 Activity/People/Settings UI; owner access and recovery; print limits/defaults; documentation;
 56 automated backend checks, 32 browser layout/accessibility checks, mocked onboarding flows,
 real Docker conversions, and virtual IPP delivery.
+
+UI refinement: white canvas, larger headings, more open spacing, quieter navigation,
+pill-shaped controls, open activity/people lists, and consistent setup/settings surfaces.
+Verified: 32 layout/accessibility checks, complete mocked setup flows, keyboard access,
+44px touch targets, and six owner-screen checks against the rebuilt Docker service.
 
 Next: configure real Resend receiving and a physical printer, then confirm a household attachment prints.
 See evidence/verification.md for the precise verification scope.

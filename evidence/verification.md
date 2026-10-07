@@ -33,6 +33,24 @@ The isolated converter was inspected with Docker: network mode `none`, non-root 
 read-only root filesystem, and 768 MiB memory limit. The application talks to it through a
 shared Unix socket; it has no API key or access to the application's persistent data volume.
 
+## October 6 UI refinement
+
+The revised interface uses apple.com-inspired typography, white space, pill-shaped actions,
+quiet navigation, and open activity/people lists. The owner screen, guided setup, and all
+three app sections share the updated design tokens. No printing, authentication, or queue
+logic changed.
+
+- Repeated all 24 app layout/accessibility checks and both complete mocked setup flows
+  (8 setup accessibility checks). No accessibility findings or browser runtime errors.
+- Inspected desktop, mobile, light, dark, and setup screenshots. Updated the README preview.
+- Checked 44px interactive targets across 18 app variants, primary-button hover contrast,
+  and keyboard access through the skip link to the first main action.
+- Rebuilt and restarted the local Docker app. Its owner screen passed six responsive/theme
+  checks, with no accessibility findings, overflow, or runtime errors. No owner setup or
+  printer action was performed during this refinement.
+- The running container matches all 30 local application/web files. Combined SHA-256:
+  `6ff750305446dea35c26fa1565a3e3a432fa82c92612f1ceb078a5cb7abb8d07`.
+
 ## Limits of this evidence
 
 - Resend was verified against current official receiving API documentation. No live account

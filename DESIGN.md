@@ -1,16 +1,23 @@
 # Paperboy design system
 
-Home printing for a family. The interface should feel as simple as a small macOS utility.
+Home printing for a family. The interface combines the simplicity of a small macOS utility
+with apple.com's spacious typography and restrained controls.
 
 References: [Apple HIG](https://developer.apple.com/design/human-interface-guidelines/),
-[Impeccable](https://impeccable.style/), [Taste Skill](https://tasteskill.dev/).
+[Impeccable](https://impeccable.style/), [Taste Skill](https://tasteskill.dev/),
+[Apple Mac](https://www.apple.com/mac/).
 Impeccable frontend-design, onboarding, and polish guidance inform the implementation.
 Taste Skill's contextual hierarchy, restraint, consistent geometry, and state handling apply;
 its marketing layout and animation defaults do not fit this home utility.
 
 - System font stack, native controls, no external fonts or assets.
-- Neutral off-white canvas, solid white surfaces, one blue accent. No glass effects.
-- 8px spacing rhythm, 10px controls, 16px grouped surfaces. Border before shadow.
+- White canvas, softly grouped neutral surfaces, one blue accent. No glass effects or shadows.
+- Open lists use fine separators, rather than enclosing every section in a card.
+- 8px spacing rhythm, 12px inputs, 24px grouped surfaces, pill-shaped actions.
+- 56px desktop page titles, 40px mobile titles, 17px body text. Larger type earns space;
+  files and settings stay compact enough to scan. Owner access uses a centered 64px headline.
+- Quiet 64px header, simple text navigation with a visible active underline.
+- Activity filters use a neutral capsule and a high-contrast selected pill.
 - One primary action per setup step. Advanced details expand inline.
 - 44px minimum interactive targets, visible focus, explicit labels, live error feedback.
 - Color supplements readable status labels. Light and dark themes respect device preference.

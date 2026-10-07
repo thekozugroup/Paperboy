@@ -42,6 +42,7 @@ const fs = require('node:fs');
       const results=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
       assert.deepEqual(results.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)})),[]);
       report.push({width,theme,step,violations:0});
+      await page.screenshot({path:`evidence/setup-${step}-${theme}-${width}.png`,fullPage:true});
     }
     await page.goto(url);
     await page.getByLabel('Setup code').fill('mock-setup');
