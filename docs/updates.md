@@ -49,13 +49,13 @@ Never use `docker compose down -v` on an installation you want to keep.
 - **Manual (default):** Settings → Updates shows a new release. Select **Install update**.
 - **Automatic:** turn on **Automatic updates** in the same screen. New stable releases are checked
   hourly and installed once printing is idle. Each server stores its own preference.
-- **Pinned:** set `PAPERBOY_PIN_VERSION=0.3.0` in `.env`, then recreate the stack. The updater
+- **Pinned:** set `PAPERBOY_PIN_VERSION=0.3.1` in `.env`, then recreate the stack. The updater
   still shows newer releases but cannot change this server's chosen version.
 
 To install a chosen release initially:
 
 ```sh
-PAPERBOY_INSTALL_VERSION=0.3.0 sh install.sh
+PAPERBOY_INSTALL_VERSION=0.3.1 sh install.sh
 ```
 
 To remove a pin, delete `PAPERBOY_PIN_VERSION` from `.env` and recreate all services with the
@@ -95,7 +95,8 @@ If startup fails, it restores the previous containers. A durable journal recover
 during replacement. Volumes are never deleted or automatically rolled back; restoring old print
 records could print pages twice. Completed and uncertain submissions retain their existing rules.
 Only releases with compatible, additive data migrations should be published to this stable channel.
-After success the updater replaces itself. A short reconnect delay in the browser is expected.
+After success the updater refreshes Docker's cached stable/latest images so a later Compose
+restart keeps the installed version. It then replaces itself. A short reconnect delay in the browser is expected.
 
 If recovery needs attention, the queue stays held while an incomplete journal exists. Inspect
 the updater logs before manually changing containers. Do not delete the journal or restore a
@@ -105,8 +106,9 @@ database snapshot while jobs might have reached the printer.
 docker compose -f compose.release.yaml logs updater
 ```
 
-An unreachable GitHub service or unavailable image does not stop normal printing. A failed
-release is not repeatedly auto-installed; select **Check again**, then **Install update** to retry.
+An unreachable GitHub service or unavailable image does not stop normal printing. Temporary
+download failures and busy printing retry hourly. A release that fails startup is not repeatedly
+auto-installed; select **Check again**, then **Install update** to retry.
 
 ## Publish the next release
 

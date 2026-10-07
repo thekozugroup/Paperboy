@@ -12,7 +12,30 @@ concurrency:
   group: paperboy-release
   cancel-in-progress: false
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a new stable version on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re, tomllib
+          version = os.environ['VERSION']
+          assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+          assert tomllib.load(open('Cargo.toml', 'rb'))['package']['version'] == version
+          assert os.environ['GITHUB_REF'] == 'refs/heads/main'
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$VERSION" > /tmp/release-tags.json
+          python3 - <<'PY'
+          import json, os
+          refs = json.load(open('/tmp/release-tags.json'))
+          assert not any(ref['ref'] == 'refs/tags/v' + os.environ['VERSION'] for ref in refs), 'Publish a new version instead of overwriting a released tag.'
+          PY
   checks:
+    needs: preflight
     uses: ./.github/workflows/ci.yaml
   build:
     needs: checks

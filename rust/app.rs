@@ -502,8 +502,14 @@ async fn api(
                         "Paperboy already has this release or a newer version.",
                     ));
                 }
-                if ["downloading", "waiting", "installing", "recovering"]
-                    .contains(&status["phase"].as_str().unwrap_or(""))
+                if [
+                    "downloading",
+                    "waiting",
+                    "installing",
+                    "finishing",
+                    "recovering",
+                ]
+                .contains(&status["phase"].as_str().unwrap_or(""))
                 {
                     return Err(error(409, "An update is already in progress."));
                 }

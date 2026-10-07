@@ -62,9 +62,11 @@ async fn install(
         &[converter, app.clone()],
     )
     .await?;
+    set(status, json!({"phase":"finishing"}));
+    engine.refresh_channels(project, release).await?;
     set(
         status,
-        json!({"phase":"idle","installed_at":paperboy::store::now(),"failed_version":null,"error":null}),
+        json!({"phase":"finishing","installed_at":paperboy::store::now(),"failed_version":null,"error":null}),
     );
     // Upgrade the updater last. The new process cleans up its stopped predecessor.
     let members = engine.members(project).await?;
@@ -125,6 +127,7 @@ async fn install(
             return Err(error);
         }
     }
+    set(status, json!({"phase":"idle"}));
     Ok(())
 }
 #[tokio::main]
@@ -187,6 +190,15 @@ async fn main() -> Result<()> {
         }
     });
     deployment::recover(&engine, &path, &project).await?;
+    // A newer companion also refreshes cached tags when an older updater performed the upgrade.
+    let running = updates::read(&path.join("app.json"));
+    if pin.is_empty()
+        && running["version"] == env!("CARGO_PKG_VERSION")
+        && let Some(version) = running["version"].as_str()
+        && let Err(error) = engine.refresh_channels(&project, version).await
+    {
+        eprintln!("The cached release channel could not be refreshed: {error}");
+    }
     if !path.join("policy.json").exists() {
         updates::atomic(
             &path.join("policy.json"),
@@ -262,7 +274,13 @@ async fn main() -> Result<()> {
             && let Err(error) = install(&engine, &path, &project, target, &status).await
         {
             eprintln!("The update could not complete: {error}");
-            let waiting = status.lock().unwrap()["phase"] == "waiting";
+            let phase = status.lock().unwrap()["phase"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned();
+            let retryable = ["waiting", "downloading"].contains(&phase.as_str());
+            let app_updated = phase == "finishing"
+                || updates::read(&path.join("journal.json"))["committed"] == true;
             set(&status, json!({"phase":"recovering"}));
             if deployment::recover(&engine, &path, &project).await.is_err() {
                 set(
@@ -277,11 +295,9 @@ async fn main() -> Result<()> {
             next_install = Instant::now() + Duration::from_secs(3600);
             set(
                 &status,
-                json!({"phase":"idle","failed_version":if waiting {Value::Null}else{json!(target)},"error":if waiting {"Printing is still active. The updater will try again in an hour."}else{"Update failed. The previous installation was retained. Check the updater logs, then retry."}}),
+                json!({"phase":"idle","failed_version":if retryable {Value::Null}else{json!(target)},"error":if phase == "waiting" {"Printing is still active. The updater will try again in an hour."}else if phase == "downloading" {"The download could not finish. The updater will try again in an hour."}else if app_updated {"Paperboy updated. Recreate the updater with Docker Compose to finish updating its tools."}else{"Update failed. The previous installation was retained. Check the updater logs, then retry."}}),
             );
-            eprintln!(
-                "Paperboy update failed; previous containers retained. No saved data was removed."
-            );
+            eprintln!("Paperboy update needs attention. No saved data was removed.");
         }
         tokio::select! { _=paperboy::process::shutdown_signal()=>break, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
     }

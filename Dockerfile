@@ -14,7 +14,7 @@ RUN cargo build --release --locked \
     && sha256sum Cargo.toml Cargo.lock rust/*.rs > /build/source.sha256
 
 FROM debian:bookworm-slim AS converter
-ARG PAPERBOY_VERSION=0.3.0
+ARG PAPERBOY_VERSION=0.3.1
 LABEL org.opencontainers.image.source="https://github.com/thekozugroup/Paperboy" \
     org.opencontainers.image.version=$PAPERBOY_VERSION
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,7 +30,7 @@ ENV HOME=/tmp
 CMD ["paperboy-tools"]
 
 FROM debian:bookworm-slim AS app
-ARG PAPERBOY_VERSION=0.3.0
+ARG PAPERBOY_VERSION=0.3.1
 LABEL org.opencontainers.image.source="https://github.com/thekozugroup/Paperboy" \
     org.opencontainers.image.version=$PAPERBOY_VERSION
 WORKDIR /app

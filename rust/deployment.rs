@@ -70,6 +70,7 @@ impl Engine {
             .context("The Docker container is missing.")
     }
     pub async fn inspect_optional(&self, id: &str) -> Result<Option<Value>> {
+        reference(id)?;
         let response = self
             .client
             .get(format!("{}/containers/{id}/json", self.base))
@@ -87,6 +88,7 @@ impl Engine {
         self.request(reqwest::Method::POST, path, body).await
     }
     pub async fn remove(&self, id: &str) -> Result<()> {
+        reference(id)?;
         // Never remove volumes. Named printer/data volumes survive replacement and rollback.
         self.request(
             reqwest::Method::DELETE,
@@ -168,6 +170,7 @@ impl Engine {
             .into())
     }
     pub async fn create(&self, name: &str, body: Value) -> Result<String> {
+        reference(name)?;
         let result = self
             .post(&format!("/containers/create?name={name}"), Some(body))
             .await?;
@@ -191,6 +194,71 @@ impl Engine {
         }
         bail!("The replacement took too long to start.")
     }
+    pub async fn refresh_channels(&self, project: &str, release: &str) -> Result<()> {
+        let selected = updates::version(release)?;
+        let members = self.members(project).await?;
+        for (role, image) in [("app", APP_IMAGE), ("converter", CONVERTER_IMAGE)] {
+            let matching: Vec<_> = members
+                .iter()
+                .filter(|v| v["Labels"]["life.paperboy.role"] == role)
+                .collect();
+            if matching.len() != 1 {
+                bail!("The updated installation is incomplete.");
+            }
+            let info = self
+                .inspect(
+                    matching[0]["Id"]
+                        .as_str()
+                        .context("Missing service identity.")?,
+                )
+                .await?;
+            validate(&info, project, role)?;
+            if info["Config"]["Labels"]["org.opencontainers.image.version"] != release {
+                bail!("The running services do not match the installed release.");
+            }
+            let id = info["Image"].as_str().context("Missing image identity.")?;
+            if id.len() != 71
+                || !id.starts_with("sha256:")
+                || !id[7..].chars().all(|c| c.is_ascii_hexdigit())
+            {
+                bail!("Invalid image identity.");
+            }
+            for tag in ["stable", "latest"] {
+                let response = self
+                    .client
+                    .get(format!("{}/images/{image}:{tag}/json", self.base))
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let previous: Value = response.json().await?;
+                    // Tags are shared by installations on this host. Never move them backwards.
+                    if previous["Config"]["Labels"]["org.opencontainers.image.version"]
+                        .as_str()
+                        .and_then(|v| updates::version(v).ok())
+                        .is_some_and(|v| v >= selected)
+                    {
+                        continue;
+                    }
+                } else if response.status() != reqwest::StatusCode::NOT_FOUND {
+                    bail!("Docker could not inspect the cached release channel.");
+                }
+                self.post(&format!("/images/{id}/tag?repo={image}&tag={tag}"), None)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+}
+fn reference(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 256
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
+    {
+        bail!("Invalid managed container reference.");
+    }
+    Ok(())
 }
 pub fn replacement(info: &Value, image: &str, release: &str) -> Result<Value> {
     let mut config = info["Config"].clone();
@@ -249,6 +317,19 @@ pub struct Saved {
     pub backup: String,
     pub role: String,
 }
+impl Saved {
+    fn check(&self) -> Result<()> {
+        reference(&self.name)?;
+        if self.id.len() != 64
+            || !self.id.chars().all(|c| c.is_ascii_hexdigit())
+            || self.backup != format!("{}-paperboy-old-{}", self.name, &self.id[..12])
+            || !["app", "converter", "updater"].contains(&self.role.as_str())
+        {
+            bail!("Invalid saved update identity.");
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Journal {
     pub services: Vec<Saved>,
@@ -261,6 +342,7 @@ pub async fn handoff(engine: &Engine, path: &Path, project: &str, own: &str) -> 
         return Ok(());
     }
     let old: Saved = serde_json::from_value(updates::read(&path.join("handoff.json")))?;
+    old.check()?;
     if own.len() < 12 || !own.chars().all(|c| c.is_ascii_hexdigit()) {
         bail!("Run the updater as a managed Docker service.");
     }
@@ -329,6 +411,7 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
     let journal: Journal = serde_json::from_value(updates::read(&path.join("journal.json")))?;
     // Validate every recorded identity before touching the daemon, including after a host crash.
     for service in &journal.services {
+        service.check()?;
         if let Some(info) = engine.inspect_optional(&service.id).await? {
             validate(&info, project, &service.role)?;
             if saved(&info, &service.role)?.id != service.id
@@ -341,6 +424,11 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
             }
         } else if !journal.committed {
             bail!("A previous container is missing. Restore it before retrying the update.");
+        }
+    }
+    for id in &journal.created {
+        if id.len() != 64 || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+            bail!("Invalid replacement identity in the update journal.");
         }
     }
     if journal.committed {
@@ -480,6 +568,7 @@ mod tests {
     };
     struct Fixture {
         containers: BTreeMap<String, Value>,
+        images: BTreeMap<String, Value>,
         calls: Vec<String>,
         bad: bool,
         next: u64,
@@ -507,6 +596,28 @@ mod tests {
                 url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
                     .into_owned()
                     .collect();
+            if path == "/containers/json" {
+                return Json(json!(members_from_containers(&state.containers))).into_response();
+            }
+            if path.starts_with("/images/") {
+                if path.ends_with("/json") {
+                    let key = path
+                        .trim_start_matches("/images/")
+                        .trim_end_matches("/json");
+                    return match state.images.get(key) {
+                        Some(image) => Json(image.clone()).into_response(),
+                        None => StatusCode::NOT_FOUND.into_response(),
+                    };
+                }
+                if path.ends_with("/tag") {
+                    let key = format!("{}:{}", query["repo"], query["tag"]);
+                    state.images.insert(
+                        key,
+                        json!({"Config":{"Labels":{"org.opencontainers.image.version":"0.3.0"}}}),
+                    );
+                    return StatusCode::CREATED.into_response();
+                }
+            }
             if path == "/containers/create" {
                 state.next += 1;
                 let id = format!("{:064x}", state.next);
@@ -557,10 +668,11 @@ mod tests {
             ("a".repeat(64), "app", APP_IMAGE),
             ("b".repeat(64), "converter", CONVERTER_IMAGE),
         ] {
-            containers.insert(id.clone(),json!({"Id":id,"Name":format!("/{role}"),"Config":{"Image":format!("{image}:0.3.0"),"Labels":{"life.paperboy.managed":"true","life.paperboy.role":role,"com.docker.compose.project":"qa"}},"HostConfig":{"NetworkMode":"none"},"Mounts":[{"Type":"volume","Name":"keep-data","Destination":"/data","RW":true}],"State":{"Running":true,"Health":{"Status":"healthy"}}}));
+            containers.insert(id.clone(),json!({"Id":id,"Image":format!("sha256:{id}"),"Name":format!("/{role}"),"Config":{"Image":format!("{image}:0.3.0"),"Labels":{"org.opencontainers.image.version":"0.3.0","life.paperboy.managed":"true","life.paperboy.role":role,"com.docker.compose.project":"qa"}},"HostConfig":{"NetworkMode":"none"},"Mounts":[{"Type":"volume","Name":"keep-data","Destination":"/data","RW":true}],"State":{"Running":true,"Health":{"Status":"healthy"}}}));
         }
         let state = Arc::new(Mutex::new(Fixture {
             containers,
+            images: [APP_IMAGE, CONVERTER_IMAGE].into_iter().flat_map(|image| ["stable", "latest"].into_iter().map(move |tag| (format!("{image}:{tag}"), json!({"Config":{"Labels":{"org.opencontainers.image.version":"0.2.0"}}})))).collect(),
             calls: Vec::new(),
             bad,
             next: 1,
@@ -582,14 +694,69 @@ mod tests {
             task,
         )
     }
-    fn members(state: &Arc<Mutex<Fixture>>) -> Vec<Value> {
-        state
-            .lock()
-            .unwrap()
-            .containers
+    fn members_from_containers(containers: &BTreeMap<String, Value>) -> Vec<Value> {
+        containers
             .values()
             .map(|v| json!({"Id":v["Id"],"Labels":v["Config"]["Labels"]}))
             .collect()
+    }
+    fn members(state: &Arc<Mutex<Fixture>>) -> Vec<Value> {
+        members_from_containers(&state.lock().unwrap().containers)
+    }
+    #[tokio::test]
+    async fn cached_channels_advance_after_upgrade_but_never_move_backwards() {
+        let (engine, state, task) = fixture(false).await;
+        engine.refresh_channels("qa", "0.3.0").await.unwrap();
+        assert_eq!(
+            state
+                .lock()
+                .unwrap()
+                .calls
+                .iter()
+                .filter(|c| c.contains("/tag?"))
+                .count(),
+            4
+        );
+        state.lock().unwrap().calls.clear();
+        for image in state.lock().unwrap().images.values_mut() {
+            image["Config"]["Labels"]["org.opencontainers.image.version"] = json!("0.4.0");
+        }
+        engine.refresh_channels("qa", "0.3.0").await.unwrap();
+        assert!(
+            !state
+                .lock()
+                .unwrap()
+                .calls
+                .iter()
+                .any(|c| c.contains("/tag?"))
+        );
+        task.abort();
+    }
+    #[tokio::test]
+    async fn altered_journal_references_are_rejected_before_docker_requests() {
+        let (engine, state, task) = fixture(false).await;
+        let path = tempfile::tempdir().unwrap();
+        let mut old = saved(&engine.inspect(&"a".repeat(64)).await.unwrap(), "app").unwrap();
+        old.name = "app?force=true".into();
+        updates::atomic(
+            &path.path().join("journal.json"),
+            &Journal {
+                services: vec![old],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        state.lock().unwrap().calls.clear();
+        assert!(recover(&engine, path.path(), "qa").await.is_err());
+        assert!(state.lock().unwrap().calls.is_empty());
+        assert!(
+            engine
+                .inspect_optional("app/json?escape=true")
+                .await
+                .is_err()
+        );
+        assert!(state.lock().unwrap().calls.is_empty());
+        task.abort();
     }
     #[tokio::test]
     async fn updater_handoff_recovers_before_create_and_after_predecessor_removal() {

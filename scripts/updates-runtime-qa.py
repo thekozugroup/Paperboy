@@ -1,6 +1,6 @@
 """Actual release/update acceptance on isolated Docker stacks and a software printer.
 
-Requires a locally built 0.2.9 test baseline and the published target release.
+Requires the published baseline and target releases.
 Only explicitly named disposable QA containers/volumes are removed.
 """
 
@@ -16,11 +16,12 @@ from pathlib import Path
 
 import fitz
 import httpx
-from fernet import Fernet
+from cryptography.fernet import Fernet
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = os.environ.get("VERSION", "0.3.0")
-BASELINE = "ghcr.io/thekozugroup/paperboy:0.2.9-qa"
+VERSION = os.environ.get("VERSION", "0.3.1")
+BASELINE_VERSION = os.environ.get("BASELINE_VERSION", "0.3.0")
+BASELINE = f"ghcr.io/thekozugroup/paperboy:{BASELINE_VERSION}"
 
 
 def docker(*args):
@@ -73,14 +74,15 @@ def run(automatic):
             "services": {
                 "paperboy": {
                     "image": BASELINE,
-                    "ports": ["127.0.0.1:8028:8025"],
                     "extra_hosts": ["api.resend.com:127.0.0.1"],
                 },
                 "converter": {"image": f"ghcr.io/thekozugroup/paperboy-converter:{VERSION}"},
                 "updater": {
                     "image": BASELINE,
-                    "group_add": [gid],
-                    "environment": {"PAPERBOY_PROJECT": project, "PAPERBOY_PIN_VERSION": "0.2.9"},
+                    "environment": {
+                        "PAPERBOY_PROJECT": project,
+                        "PAPERBOY_PIN_VERSION": BASELINE_VERSION,
+                    },
                 },
             }
         }
@@ -97,9 +99,18 @@ def run(automatic):
             "updates",
         ]
 
+        compose_env = dict(
+            os.environ,
+            PAPERBOY_DOCKER_GID=gid,
+            PAPERBOY_PORT="8028",
+            PAPERBOY_BIND="127.0.0.1",
+            PAPERBOY_SECURE_COOKIE="0",
+            PAPERBOY_AUTO_UPDATE="0",
+        )
+
         def compose(*args):
             return subprocess.run(
-                [*command, *args], check=True, capture_output=True, text=True
+                [*command, *args], check=True, capture_output=True, text=True, env=compose_env
             ).stdout.strip()
 
         def api(path, method="GET", data=None, expected=200):
@@ -215,7 +226,7 @@ def run(automatic):
                 "/data/paperboy.sqlite3",
             )
             compose("start", "paperboy")
-            wait_for(lambda: api("/updates").get("pin") == "0.2.9")
+            wait_for(lambda: api("/updates").get("pin") == BASELINE_VERSION)
             wait_for(lambda: api("/updates").get("available"))
             api("/updates/install", "POST", {"version": VERSION}, expected=409)
             api("/updates/policy", "PUT", {"automatic": True}, expected=409)
@@ -262,6 +273,12 @@ def run(automatic):
             )
             assert state["updates"]["automatic"] is automatic
             assert state["updates"].get("error") is None
+            for image in ("paperboy", "paperboy-converter"):
+                for tag in ("stable", "latest"):
+                    cached = json.loads(
+                        docker("image", "inspect", f"ghcr.io/thekozugroup/{image}:{tag}")
+                    )[0]
+                    assert cached["Config"]["Labels"]["org.opencontainers.image.version"] == VERSION
             files = docker(
                 "exec", printer, "sh", "-c", "find /tmp/printed -name '*.pdf' -type f | wc -l"
             )
@@ -287,7 +304,7 @@ def run(automatic):
                 "{{.Names}} ",
             ).count("-paperboy-old-")
             print(
-                f"Passed: {'automatic' if automatic else 'manual'} 0.2.9 fixture → published {VERSION}; app, converter, and updater replaced; owner, key, people, printer, queue, and duplicate safety retained; exactly one software print.",
+                f"Passed: {'automatic' if automatic else 'manual'} published {BASELINE_VERSION} → {VERSION}; app, converter, and updater replaced; owner, key, people, printer, queue, and duplicate safety retained; exactly one software print.",
                 flush=True,
             )
         finally:

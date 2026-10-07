@@ -2,9 +2,10 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
-Current: Adding versioned Docker releases and per-server update controls.
-Required: public AMD64/ARM64 images, release assets, optional manual/automatic updater,
-version pinning, safe replacement/recovery, and browser/container evidence.
+Current: v0.3.0 is published. Preparing v0.3.1 with update reliability fixes.
+Verified: public AMD64/ARM64 images and install assets; native manual/automatic updater;
+version pins; preserved owner, key, people, printer, and queue during both Docker upgrades.
+Next: publish v0.3.1, verify upgrades between actual published releases, and finish installer QA.
 
 Previous: Rust migration complete. Native service and isolated converter ship on main,
 with verified Docker builds. Saved settings, owner access, sessions, and queue remain

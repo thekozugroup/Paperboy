@@ -70,7 +70,7 @@ and set `PAPERBOY_BIND=0.0.0.0`. For HTTPS behind a reverse proxy, also set
 Published Docker images support Linux AMD64 and ARM64. **Settings → Updates** shows your
 installed version and new stable releases. With the optional updater enabled, select
 **Install update** or turn on **Automatic updates**. Each server keeps its own preference;
-automatic updates are off by default. Set `PAPERBOY_PIN_VERSION=0.3.0` in `.env` to keep a
+automatic updates are off by default. Set `PAPERBOY_PIN_VERSION=0.3.1` in `.env` to keep a
 server on a fixed release while other servers continue updating.
 
 Updates preserve settings, approved senders, printer configuration, and the durable print
