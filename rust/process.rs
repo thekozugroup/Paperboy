@@ -6,6 +6,12 @@ use nix::{
 use std::{process::Stdio, time::Duration};
 use tokio::{io::AsyncReadExt, process::Command, time::timeout};
 
+pub async fn shutdown_signal() {
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("Signal handler");
+    tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
+}
+
 /// Commands never pass through a shell. Timeouts terminate the entire process group.
 pub async fn run(program: &str, args: &[String], seconds: u64) -> Result<Vec<u8>> {
     let mut command = Command::new(program);

@@ -114,9 +114,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/convert", post(convert))
         .with_state(Arc::new(Semaphore::new(1)));
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(paperboy::process::shutdown_signal())
         .await?;
     Ok(())
 }

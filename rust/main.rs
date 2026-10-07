@@ -63,8 +63,14 @@ async fn main() -> Result<()> {
     let host = env::var("PAPERBOY_HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     eprintln!("Paperboy is listening on port {port}.");
+    let abort = worker.as_ref().map(|task| task.abort_handle());
     let result = axum::serve(listener, app.router(&web))
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(async move {
+            paperboy::process::shutdown_signal().await;
+            if let Some(abort) = abort {
+                abort.abort();
+            }
+        })
         .await;
     if let Some(worker) = worker {
         worker.abort();
@@ -72,9 +78,4 @@ async fn main() -> Result<()> {
     }
     result?;
     Ok(())
-}
-async fn shutdown() {
-    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .expect("Signal handler");
-    tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
 }

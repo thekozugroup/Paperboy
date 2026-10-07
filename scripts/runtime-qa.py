@@ -291,6 +291,11 @@ def run():
         print(
             "Passed: restart keeps the completed job and duplicate records; saved Fernet key remains compatible."
         )
+        started = time.monotonic()
+        docker("stop", "--time", "5", tools)
+        assert time.monotonic() - started < 3, "Idle converter required a forced stop."
+        assert json.loads(docker("inspect", tools))[0]["State"]["ExitCode"] == 0
+        print("Passed: idle converter handles Docker's stop signal and exits cleanly.")
     finally:
         client.close()
         for container in reversed(containers):

@@ -48,7 +48,8 @@ logic changed.
 - Rebuilt and restarted the local Docker app. Its owner screen passed six responsive/theme
   checks, with no accessibility findings, overflow, or runtime errors. No owner setup or
   printer action was performed during this refinement.
-- The running container matches all 30 local application/web files. Combined SHA-256:
+- Before the Rust migration, the running container matched all 30 application/web files.
+  Combined SHA-256 at that checkpoint:
   `6ff750305446dea35c26fa1565a3e3a432fa82c92612f1ceb078a5cb7abb8d07`.
 
 ## Rust migration — converter checkpoint
@@ -97,6 +98,15 @@ image has no Python interpreter. The previous Python implementation lives only u
   and CMYK TIFF. Subprocess stdout is bounded to 1 MiB; deadlines kill the process group.
 - Both images include a SHA-256 manifest of the Cargo inputs and Rust source used to build
   their native binaries, allowing comparison with the checked-out source.
+- The committed native service was rebuilt and restarted locally. The running Rust source
+  manifest and served HTML/CSS/JavaScript match the checkout. Its owner screen passed six
+  desktop/mobile/light/dark accessibility checks; no account or printer actions were taken
+  against the live data volume. Both production services are healthy.
+- The converter now handles Docker's SIGTERM stop signal and exits normally while idle,
+  within the three-second integration-test bound. The application stops its queue worker
+  as shutdown begins. The complete Docker migration/delivery test passed with this change.
+- GitHub's Rust, Docker/reference, and native-browser jobs passed for service commit
+  `2f244c3`. The shutdown follow-up repeats these checks on its push.
 
 Local performance sample: fresh, uninitialized production containers, same Docker/Colima host,
 10 warm-up requests and 100 sequential `/api/auth/status` requests per implementation:
