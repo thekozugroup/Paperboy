@@ -65,12 +65,23 @@ impl Engine {
         Ok(serde_json::from_slice(&bytes)?)
     }
     pub async fn inspect(&self, id: &str) -> Result<Value> {
-        self.request(
-            reqwest::Method::GET,
-            &format!("/containers/{id}/json"),
-            None,
-        )
-        .await
+        self.inspect_optional(id)
+            .await?
+            .context("The Docker container is missing.")
+    }
+    pub async fn inspect_optional(&self, id: &str) -> Result<Option<Value>> {
+        let response = self
+            .client
+            .get(format!("{}/containers/{id}/json", self.base))
+            .send()
+            .await?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            bail!("Docker could not inspect the managed container.");
+        }
+        Ok(Some(response.json().await?))
     }
     pub async fn post(&self, path: &str, body: Option<Value>) -> Result<Value> {
         self.request(reqwest::Method::POST, path, body).await
@@ -245,6 +256,45 @@ pub struct Journal {
     pub committed: bool,
     pub version: String,
 }
+pub async fn handoff(engine: &Engine, path: &Path, project: &str, own: &str) -> Result<()> {
+    if !path.join("handoff.json").exists() {
+        return Ok(());
+    }
+    let old: Saved = serde_json::from_value(updates::read(&path.join("handoff.json")))?;
+    if own.len() < 12 || !own.chars().all(|c| c.is_ascii_hexdigit()) {
+        bail!("Run the updater as a managed Docker service.");
+    }
+    let current = engine.inspect(own).await?;
+    validate(&current, project, "updater")?;
+    if old.id.starts_with(own) {
+        if current["Name"] == format!("/{}", old.backup) {
+            if engine.inspect_optional(&old.name).await?.is_some() {
+                bail!("The replacement is completing the updater handoff.");
+            }
+            engine
+                .post(
+                    &format!("/containers/{}/rename?name={}", old.id, old.name),
+                    None,
+                )
+                .await?;
+        } else if current["Name"] != format!("/{}", old.name) {
+            bail!("The updater handoff does not match this installation.");
+        }
+    } else {
+        if current["Name"] != format!("/{}", old.name) {
+            bail!("Only the managed replacement can finish the updater handoff.");
+        }
+        if let Some(info) = engine.inspect_optional(&old.id).await? {
+            validate(&info, project, "updater")?;
+            if info["Name"] != format!("/{}", old.backup) {
+                bail!("The previous updater no longer matches the saved handoff.");
+            }
+            engine.remove(&old.id).await?;
+        }
+    }
+    std::fs::remove_file(path.join("handoff.json"))?;
+    Ok(())
+}
 
 pub fn saved(info: &Value, role: &str) -> Result<Saved> {
     let id = info["Id"]
@@ -279,7 +329,7 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
     let journal: Journal = serde_json::from_value(updates::read(&path.join("journal.json")))?;
     // Validate every recorded identity before touching the daemon, including after a host crash.
     for service in &journal.services {
-        if let Ok(info) = engine.inspect(&service.id).await {
+        if let Some(info) = engine.inspect_optional(&service.id).await? {
             validate(&info, project, &service.role)?;
             if saved(&info, &service.role)?.id != service.id
                 || !info["Name"].as_str().is_some_and(|n| {
@@ -295,7 +345,7 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
     }
     if journal.committed {
         for old in &journal.services {
-            if engine.inspect(&old.id).await.is_ok() {
+            if engine.inspect_optional(&old.id).await?.is_some() {
                 engine.remove(&old.id).await?;
             }
         }
@@ -303,7 +353,7 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
         // Discover a replacement by name too: a crash can occur after Docker create but before
         // its new ID is written to the journal. Never lose that orphan or overwrite the old name.
         for old in &journal.services {
-            if let Ok(info) = engine.inspect(&old.name).await
+            if let Some(info) = engine.inspect_optional(&old.name).await?
                 && info["Id"] != old.id
             {
                 validate(&info, project, &old.role)?;
@@ -317,7 +367,7 @@ pub async fn recover(engine: &Engine, path: &Path, project: &str) -> Result<()> 
             }
         }
         for id in &journal.created {
-            if let Ok(info) = engine.inspect(id).await {
+            if let Some(info) = engine.inspect_optional(id).await? {
                 let role = info["Config"]["Labels"]["life.paperboy.role"]
                     .as_str()
                     .unwrap_or("");
@@ -540,6 +590,63 @@ mod tests {
             .values()
             .map(|v| json!({"Id":v["Id"],"Labels":v["Config"]["Labels"]}))
             .collect()
+    }
+    #[tokio::test]
+    async fn updater_handoff_recovers_before_create_and_after_predecessor_removal() {
+        for after_remove in [false, true] {
+            let (engine, state, task) = fixture(false).await;
+            let path = tempfile::tempdir().unwrap();
+            let old_id = "a".repeat(64);
+            let new_id = "c".repeat(64);
+            let mut old = engine.inspect(&old_id).await.unwrap();
+            old["Config"]["Labels"]["life.paperboy.role"] = json!("updater");
+            state
+                .lock()
+                .unwrap()
+                .containers
+                .insert(old_id.clone(), old.clone());
+            let saved = saved(&old, "updater").unwrap();
+            updates::atomic(&path.path().join("handoff.json"), &saved).unwrap();
+            if after_remove {
+                let mut new = old.clone();
+                new["Id"] = json!(new_id);
+                state.lock().unwrap().containers.insert(new_id.clone(), new);
+                state.lock().unwrap().containers.remove(&old_id);
+                handoff(&engine, path.path(), "qa", &new_id).await.unwrap();
+            } else {
+                engine
+                    .post(
+                        &format!("/containers/{old_id}/rename?name={}", saved.backup),
+                        None,
+                    )
+                    .await
+                    .unwrap();
+                handoff(&engine, path.path(), "qa", &old_id).await.unwrap();
+                assert_eq!(engine.inspect(&old_id).await.unwrap()["Name"], "/app");
+            }
+            assert!(!path.path().join("handoff.json").exists());
+            task.abort();
+        }
+    }
+    #[tokio::test]
+    async fn new_updater_removes_its_predecessor_before_acquiring_the_lock() {
+        let (engine, state, task) = fixture(false).await;
+        let path = tempfile::tempdir().unwrap();
+        let old_id = "a".repeat(64);
+        let new_id = "c".repeat(64);
+        let mut old = engine.inspect(&old_id).await.unwrap();
+        old["Config"]["Labels"]["life.paperboy.role"] = json!("updater");
+        let saved = saved(&old, "updater").unwrap();
+        let mut new = old.clone();
+        new["Id"] = json!(new_id);
+        old["Name"] = json!(format!("/{}", saved.backup));
+        state.lock().unwrap().containers.insert(old_id.clone(), old);
+        state.lock().unwrap().containers.insert(new_id.clone(), new);
+        updates::atomic(&path.path().join("handoff.json"), &saved).unwrap();
+        handoff(&engine, path.path(), "qa", &new_id).await.unwrap();
+        assert!(!state.lock().unwrap().containers.contains_key(&old_id));
+        assert!(state.lock().unwrap().containers.contains_key(&new_id));
+        task.abort();
     }
     #[tokio::test]
     async fn healthy_replacement_keeps_volumes_and_commits_before_cleanup() {

@@ -146,26 +146,13 @@ async fn main() -> Result<()> {
     }
     let engine = Engine::open(Path::new("/var/run/docker.sock")).await?;
     // Complete the self-handoff before taking the predecessor's exclusive lock.
-    if path.join("handoff.json").exists() {
-        let old: deployment::Saved =
-            serde_json::from_value(updates::read(&path.join("handoff.json")))?;
-        let info = engine.inspect(&old.id).await?;
-        deployment::validate(&info, &project, "updater")?;
-        // Only a replacement with the original name can finish the handoff.
-        let own = env::var("HOSTNAME").unwrap_or_default();
-        if !old.id.starts_with(&own)
-            && !own.is_empty()
-            && info["Name"] == format!("/{}", old.backup)
-        {
-            let current = engine.inspect(&own).await?;
-            deployment::validate(&current, &project, "updater")?;
-            if current["Name"] != format!("/{}", old.name) {
-                bail!("Only the managed replacement can finish the updater handoff.");
-            }
-            engine.remove(&old.id).await?;
-            fs::remove_file(path.join("handoff.json"))?;
-        }
-    }
+    deployment::handoff(
+        &engine,
+        &path,
+        &project,
+        &env::var("HOSTNAME").unwrap_or_default(),
+    )
+    .await?;
     let lock = fs::OpenOptions::new()
         .read(true)
         .write(true)
