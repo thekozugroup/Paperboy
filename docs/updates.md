@@ -7,8 +7,9 @@ No GitHub login, compiler, source checkout, inbound internet port, or subscripti
 
 ## Linux and Unraid
 
-Install Docker Engine and Docker Compose v2. On Unraid, install a Compose manager that provides
-Docker Compose v2, and place the installation folder on persistent storage, such as
+Install Docker Engine, curl, and Docker Compose 2.24.4 or newer (including v5). The Linux
+networking file uses [Compose's reset support](https://docs.docker.com/reference/compose-file/merge/).
+On Unraid, install a Compose manager that provides a compatible version, and place the installation folder on persistent storage, such as
 `/mnt/user/appdata/paperboy`. This release is a Compose stack, not a Community Applications listing.
 
 Download `install.sh` from the latest release, review it, and run it from an empty folder:
@@ -118,3 +119,17 @@ checks, builds and validates native AMD64/ARM64 images, verifies anonymous regis
 publishes the GitHub release assets, and promotes `stable`/`latest`.
 Only published stable releases containing installation assets are offered to installed servers.
 Never overwrite a published version tag; create a new patch release for fixes.
+
+To verify a published upgrade on a disposable Docker test host, build the software-printer
+fixture with `docker build --target printer-qa -t paperboy-printer:qa .`, install the development
+Python requirements, then run:
+
+```sh
+BASELINE_VERSION=0.3.0 VERSION=0.3.1 python scripts/updates-runtime-qa.py
+```
+
+This checks pinning, manual and automatic upgrades, active-print waiting, saved data, duplicate
+safety, and a later Compose restart without pulling. Use actual previously published baseline
+and target versions. The test changes cached stable/latest image tags on that Docker host; do
+not run it on a production printing server. Only its own temporary containers and volumes are
+removed. Physical-printer acceptance remains separate.

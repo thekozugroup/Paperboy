@@ -1,6 +1,7 @@
 """Actual release/update acceptance on isolated Docker stacks and a software printer.
 
 Requires the published baseline and target releases.
+Use a disposable Docker test host: this also changes its cached stable/latest image tags.
 Only explicitly named disposable QA containers/volumes are removed.
 """
 
@@ -22,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION = os.environ.get("VERSION", "0.3.1")
 BASELINE_VERSION = os.environ.get("BASELINE_VERSION", "0.3.0")
 BASELINE = f"ghcr.io/thekozugroup/paperboy:{BASELINE_VERSION}"
+CONTROLLER_VERSION = os.environ.get("CONTROLLER_VERSION", BASELINE_VERSION)
 
 
 def docker(*args):
@@ -76,9 +78,11 @@ def run(automatic):
                     "image": BASELINE,
                     "extra_hosts": ["api.resend.com:127.0.0.1"],
                 },
-                "converter": {"image": f"ghcr.io/thekozugroup/paperboy-converter:{VERSION}"},
+                "converter": {
+                    "image": f"ghcr.io/thekozugroup/paperboy-converter:{BASELINE_VERSION}"
+                },
                 "updater": {
-                    "image": BASELINE,
+                    "image": f"ghcr.io/thekozugroup/paperboy:{CONTROLLER_VERSION}",
                     "environment": {
                         "PAPERBOY_PROJECT": project,
                         "PAPERBOY_PIN_VERSION": BASELINE_VERSION,
@@ -125,6 +129,14 @@ def run(automatic):
 
         try:
             compose("up", "-d", "--wait")
+            # Model a normal installed server with old stable/latest images cached locally.
+            for image in ("paperboy", "paperboy-converter"):
+                for tag in ("stable", "latest"):
+                    docker(
+                        "tag",
+                        f"ghcr.io/thekozugroup/{image}:{BASELINE_VERSION}",
+                        f"ghcr.io/thekozugroup/{image}:{tag}",
+                    )
             original = identities()
             app = original["paperboy"]
             wait_for(lambda: client.get("/api/health").is_success)
@@ -295,6 +307,22 @@ def run(automatic):
                 == before_settings
             )
             db.close()
+            # A later Compose restart without pulling must keep the upgraded release.
+            for role, image in (
+                ("paperboy", "paperboy"),
+                ("converter", "paperboy-converter"),
+                ("updater", "paperboy"),
+            ):
+                config["services"][role]["image"] = f"ghcr.io/thekozugroup/{image}:stable"
+            override.write_text(json.dumps(config))
+            compose("up", "-d", "--wait")
+            wait_for(
+                lambda: (
+                    api("/updates").get("current") == VERSION
+                    and api("/updates").get("updater_version") == VERSION
+                )
+            )
+            assert {job["id"]: job["status"] for job in api("/state")["jobs"]} == jobs
             assert not docker(
                 "ps",
                 "-a",
@@ -304,7 +332,7 @@ def run(automatic):
                 "{{.Names}} ",
             ).count("-paperboy-old-")
             print(
-                f"Passed: {'automatic' if automatic else 'manual'} published {BASELINE_VERSION} → {VERSION}; app, converter, and updater replaced; owner, key, people, printer, queue, and duplicate safety retained; exactly one software print.",
+                f"Passed: {'automatic' if automatic else 'manual'} published {BASELINE_VERSION} → {VERSION} (controller {CONTROLLER_VERSION}); app, converter, and updater replaced; owner, key, people, printer, queue, and duplicate safety retained; exactly one software print; cached-channel Compose restart kept the release.",
                 flush=True,
             )
         finally:

@@ -2,10 +2,16 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
-Current: v0.3.0 is published. Preparing v0.3.1 with update reliability fixes.
-Verified: public AMD64/ARM64 images and install assets; native manual/automatic updater;
-version pins; preserved owner, key, people, printer, and queue during both Docker upgrades.
-Next: publish v0.3.1, verify upgrades between actual published releases, and finish installer QA.
+Current: v0.3.1 is published and running locally from its public Docker images.
+Release source: a2963965920969e60e8aada97102691304ca1d8d.
+Release: https://github.com/thekozugroup/Paperboy/releases/tag/v0.3.1.
+Verified: native AMD64/ARM64 builds and conversions, anonymous image access, checksummed
+Linux installation, manual/automatic published upgrades, version pins, active-print waiting,
+preserved owner/key/people/printer/queue, duplicate safety, and cached-channel Compose restart.
+The patched updater's installation path passed a further automatic-upgrade check.
+Taste Skill preserve-mode polish passed 62 responsive/theme/accessibility checks and eight
+interactions. The local app and converter source manifests and served assets match the release;
+the companion is connected and automatic updates remain off until enabled.
 
 Previous: Rust migration complete. Native service and isolated converter ship on main,
 with verified Docker builds. Saved settings, owner access, sessions, and queue remain
@@ -47,6 +53,7 @@ service shutdown begins. GitHub verified all three jobs for the service migratio
 Measured idle app-process RSS: Python 93.3 MiB; Rust 6.6 MiB on this host. Document engines
 and CUPS are separate from that measurement. No claim of universal fastest performance.
 
-Next: configure Resend and a physical printer in the local UI, approve a sending address,
-and confirm the actual output of an emailed attachment. No further migration work remains.
+Next: install using docs/updates.md on each server. Choose manual updates, enable automatic
+updates in Settings, or set a version pin. Configure Resend and a physical printer, approve
+a sending address, and confirm the actual output of an emailed attachment.
 See evidence/verification.md for the precise verification scope.

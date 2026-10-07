@@ -11,7 +11,7 @@ The service and conversion tools run as native Rust binaries.
 
 ## Start
 
-Requires Docker with Compose, internet access, a Resend account, and a local AirPrint or IPP printer.
+Requires Docker with Compose 2.24.4 or newer, curl, internet access, a Resend account, and a local AirPrint or IPP printer.
 
 ```sh
 mkdir paperboy && cd paperboy

@@ -120,6 +120,57 @@ Memory is process RSS, excluding CUPS and the converter. These are local idle me
 not a whole-container budget, loaded-printing benchmark, or universal fastest-performance claim.
 The baseline image was `d5bd6a977cc7`; measured Rust image was `85a88e0f3f36`.
 
+## Versioned releases and updates — v0.3.1
+
+- Published [v0.3.0](https://github.com/thekozugroup/Paperboy/releases/tag/v0.3.0) from
+  `30b0ce420584e75f003199c1a7c6873f25cdb02a`, followed by the reliability patch
+  [v0.3.1](https://github.com/thekozugroup/Paperboy/releases/tag/v0.3.1) from
+  `a2963965920969e60e8aada97102691304ca1d8d`.
+- The [v0.3.1 release workflow](https://github.com/thekozugroup/Paperboy/actions/runs/37693872529)
+  passed native Rust, Docker/reference, browser, AMD64, ARM64, and publication jobs.
+  Both architectures ran the ten converter checks on native runners. Public app/converter
+  `0.3.1`, `stable`, and `latest` tags are published. Anonymous registry reads verified
+  the versioned manifests contain both Linux architectures.
+- Forty-four native tests passed, including transaction recovery, unhealthy-startup rollback,
+  interrupted self-handoffs, protected project scope, tampered journal references, monotonic
+  cached image channels, and authenticated update controls. Formatting and Clippy passed;
+  the existing 56 Python reference checks remain compatibility evidence.
+- Browser checks passed 24 app and eight setup layout/accessibility cases, eight interactions,
+  and 30 update cases across desktop, 390px, 320px, light, dark, and reduced motion.
+  Update-provider scenarios are explicit fixtures, including the fictional 0.4.0 screenshots.
+  Taste Skill preserve-mode guidance was read from the official site's linked skill source.
+- The actual published installer ran inside Linux and verified the Compose asset checksums,
+  detected Docker's socket group, produced a version pin when requested, validated both
+  standard and host-network Compose variants, and refused an existing installation.
+  The latest installer follows stable and leaves automatic updates off.
+- `scripts/updates-runtime-qa.py` exercised published **0.3.0 → 0.3.1** twice: manual and
+  automatic, with the original 0.3.0 controller. A third automatic scenario used the patched
+  0.3.1 controller to exercise its own install/cached-tag/handoff path against the older app.
+  Each stack began with old stable/latest images deliberately cached. A later Compose restart
+  without pulling retained 0.3.1 and saved jobs. These are isolated stacks on a test daemon;
+  the script intentionally changes that daemon's cached channel tags.
+- Every scenario reported the new release while pinned, rejected installation/automatic
+  policy changes under that pin, waited for a held active CUPS job without replacing any
+  service early, then replaced app/converter/updater. Owner session, password hashes, encrypted
+  API key, approved sender, printer queue, waiting jobs, completed status, and uncertain status
+  survived. Unsafe retries and installing the current version were rejected. Exactly one PDF
+  reached the software printer per scenario; no retired containers remained.
+- Linux update acceptance ran on the local ARM64 Colima daemon. The Resend host resolves to
+  loopback inside these fixtures, and credentials are synthetic. No physical printer or real
+  Resend account was used. A preliminary 0.2.9 version-label fixture also passed both modes;
+  it was not a historically published 0.2.9 release.
+- The primary local stack now runs the public v0.3.1 images at `http://127.0.0.1:8025`, reusing
+  its original four data/printer volumes and adding one update-control volume. App/converter
+  health checks pass; the controller heartbeat is current, latest is 0.3.1, and automatic
+  updates are off. Source hash manifests and served HTML/CSS/JavaScript match the checkout.
+  Its owner screen passed six further desktop/mobile/light/dark accessibility checks.
+  No owner account was claimed and no print was requested on this primary stack.
+- Release asset SHA-256 values: `compose.release.yaml`
+  `e44518c57c83ab1c9c1f2a26758400b4902231b3cff1d4879440ea447a299339`;
+  `compose.linux.yaml` `cd14e3fd6f6b180a2575b625e80e9c6191b338f16e817325bada632058cce50b`.
+  Both are covered by the published `SHA256SUMS`. Published version tags are now protected
+  by the release preflight; future fixes require a new version.
+
 ## Limits of this evidence
 
 - Resend was verified against current official receiving API documentation. No live account
@@ -128,7 +179,8 @@ The baseline image was `d5bd6a977cc7`; measured Rust image was `85a88e0f3f36`.
   CUPS completion does not prove a page emerged from a household printer.
 - UI checks used desktop Chrome with responsive viewports, not native iOS/Android hardware.
   The interface follows Apple HIG principles; Apple has not certified it.
-- Only the local ARM64 Docker images were exercised here. GitHub CI builds Linux AMD64.
+- Update acceptance used local ARM64 Linux Docker. Release builds and conversion checks used
+  native AMD64 and ARM64 GitHub runners. Unraid hardware and Docker Desktop were not exercised.
 - Python reference/PDF-validation dependencies emit deprecation warnings; they do not fail
   the checks and are absent from the production app.
 - Initial acceptance remains: supply your Resend key/address, pair your physical printer,
