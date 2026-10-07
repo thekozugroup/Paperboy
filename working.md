@@ -2,7 +2,11 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
-Current: Rust migration complete. Native service and isolated converter ship on main,
+Current: Adding versioned Docker releases and per-server update controls.
+Required: public AMD64/ARM64 images, release assets, optional manual/automatic updater,
+version pinning, safe replacement/recovery, and browser/container evidence.
+
+Previous: Rust migration complete. Native service and isolated converter ship on main,
 with verified Docker builds. Saved settings, owner access, sessions, and queue remain
 compatible. Clean Docker shutdown and software-printer delivery are verified.
 Public repository: https://github.com/thekozugroup/Paperboy.

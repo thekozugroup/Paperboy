@@ -1,0 +1,83 @@
+# Published images. No checkout, compiler, GitHub account, or local build required.
+name: paperboy
+services:
+  paperboy:
+    image: ghcr.io/thekozugroup/paperboy:${PAPERBOY_PIN_VERSION:-stable}
+    restart: unless-stopped
+    ports:
+      - "${PAPERBOY_BIND:-127.0.0.1}:${PAPERBOY_PORT:-8025}:8025"
+    environment:
+      PAPERBOY_SECURE_COOKIE: "${PAPERBOY_SECURE_COOKIE:-0}"
+      PAPERBOY_UPDATE_DIR: /updates
+    labels:
+      life.paperboy.managed: "true"
+      life.paperboy.role: app
+    volumes:
+      - paperboy-data:/data
+      - cups-config:/etc/cups
+      - cups-spool:/var/spool/cups
+      - converter-socket:/run/paperboy
+      - update-control:/updates
+    depends_on:
+      converter:
+        condition: service_healthy
+    mem_limit: 512m
+    pids_limit: 128
+    stop_grace_period: 40s
+    security_opt:
+      - no-new-privileges:true
+  converter:
+    image: ghcr.io/thekozugroup/paperboy-converter:${PAPERBOY_PIN_VERSION:-stable}
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    volumes:
+      - converter-socket:/run/paperboy
+    labels:
+      life.paperboy.managed: "true"
+      life.paperboy.role: converter
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, paperboy-tools, health]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+  updater:
+    profiles: [updates]
+    image: ghcr.io/thekozugroup/paperboy:${PAPERBOY_PIN_VERSION:-stable}
+    restart: unless-stopped
+    user: "1000:1000"
+    # Set this to the socket's group: stat -c %g /var/run/docker.sock
+    group_add: ["${PAPERBOY_DOCKER_GID:-0}"]
+    entrypoint: [/usr/local/bin/paperboy-updater]
+    healthcheck:
+      disable: true
+    environment:
+      PAPERBOY_UPDATE_DIR: /updates
+      PAPERBOY_PROJECT: "${COMPOSE_PROJECT_NAME:-paperboy}"
+      PAPERBOY_PIN_VERSION: "${PAPERBOY_PIN_VERSION:-}"
+      PAPERBOY_AUTO_UPDATE: "${PAPERBOY_AUTO_UPDATE:-0}"
+    labels:
+      life.paperboy.managed: "true"
+      life.paperboy.role: updater
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - update-control:/updates
+    read_only: true
+    cap_drop: [ALL]
+    mem_limit: 128m
+    pids_limit: 32
+    security_opt: [no-new-privileges:true]
+volumes:
+  paperboy-data:
+  cups-config:
+  cups-spool:
+  converter-socket:
+  update-control:

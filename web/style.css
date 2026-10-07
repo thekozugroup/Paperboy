@@ -256,3 +256,22 @@ details > form, details > .details-content { margin-top: 16px; }
   .job-status { grid-column: 1; grid-row: 3; justify-self: start; padding-left: 52px; text-align: left; }
   .row-action { display: inline-flex; margin: 0; }
 }
+
+/* Updates use the same grouped settings surface and native control geometry. */
+.update-description { font-size: 15px; line-height: 1.6; margin-top: 20px; max-width: 56ch; }
+.update-error { font-size: 15px; color: var(--amber); margin-top: 16px; }
+.update-checked { margin-top: 12px; }
+.update-preference { display: flex; gap: 24px; align-items: center; justify-content: space-between; padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--line); }
+.update-preference label { margin: 0 0 4px; }
+.update-preference p { font-size: 14px; max-width: 42ch; }
+.switch { width: 58px; min-width: 58px; min-height: 44px; padding: 8px 0; border: 0; border-radius: 999px; background: transparent; position: relative; }
+.switch::before { content: ''; position: absolute; width: 50px; height: 30px; border-radius: 999px; background: var(--muted); }
+.switch[aria-checked="true"]::before { background: var(--button); }
+.switch span[aria-hidden] { position: relative; width: 24px; height: 24px; border-radius: 50%; background: #fff; transform: translateX(-10px); }
+.switch[aria-checked="true"] span[aria-hidden] { transform: translateX(10px); }
+.switch:hover { background: transparent; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.update-links { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 20px; font-size: 14px; }
+.update-links a, .update-link { display: inline-flex; align-items: center; min-height: 44px; }
+.update-link { margin-top: 16px; font-size: 14px; }
+@media (max-width: 760px) { .update-content .compact-row { align-items: flex-start; flex-direction: column; gap: 20px; } }

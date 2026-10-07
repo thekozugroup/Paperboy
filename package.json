@@ -1,6 +1,6 @@
 {
   "name": "paperboy-browser-checks",
   "private": true,
-  "scripts": {"test:browser": "node scripts/browser-qa.cjs && node scripts/setup-qa.cjs"},
+  "scripts": {"test:browser": "node scripts/browser-qa.cjs && node scripts/setup-qa.cjs && node scripts/updates-qa.cjs"},
   "devDependencies": {"@axe-core/playwright": "4.13.0", "playwright": "1.63.0"}
 }

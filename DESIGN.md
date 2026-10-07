@@ -25,3 +25,7 @@ its marketing layout and animation defaults do not fit this home utility.
 - Queue says “Sent to printer” until CUPS reports completion. Preview data is clearly labeled.
 - Setup: owner access → Resend → printer → approved senders → first email.
 - Navigation: Activity, People, Settings. Mobile uses the same labels and actions.
+- Updates stay in the existing grouped Settings layout: readable installed version, one
+  install/check action, a labeled automatic-update switch, and quiet release notes.
+  Taste Skill's preserve-mode redesign and theme/accessibility checks guide this iteration.
+  Pinned, waiting, offline, and unmanaged states use plain copy and progressive disclosure.

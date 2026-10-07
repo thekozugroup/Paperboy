@@ -10,6 +10,10 @@ async fn main() -> Result<()> {
         .parse::<u16>()?;
     let root = PathBuf::from(env::var("PAPERBOY_DATA_DIR").unwrap_or_else(|_| "./data".into()));
     match env::args().nth(1).as_deref() {
+        Some("--version") => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
         Some("health") => {
             let response = reqwest::Client::builder()
                 .no_proxy()
@@ -59,6 +63,7 @@ async fn main() -> Result<()> {
     } else {
         None
     };
+    let updates = tokio::spawn(paperboy::updates::monitor(app.clone()));
     let web = PathBuf::from(env::var("PAPERBOY_WEB_DIR").unwrap_or_else(|_| "web".into()));
     let host = env::var("PAPERBOY_HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
@@ -76,6 +81,7 @@ async fn main() -> Result<()> {
         worker.abort();
         let _ = worker.await;
     }
+    updates.abort();
     result?;
     Ok(())
 }

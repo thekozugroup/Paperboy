@@ -446,8 +446,85 @@ async fn api(
             };
             let blocked=app.store.rows("SELECT * FROM messages WHERE status='blocked' AND sender IS NOT NULL ORDER BY created_at DESC LIMIT 30",&[])?;
             Ok(success(
-                json!({"settings":settings,"senders":app.store.senders()?,"jobs":app.store.jobs()?,"blocked":blocked,"printer_status":printer_status,"demo":app.demo}),
+                json!({"settings":settings,"senders":app.store.senders()?,"jobs":app.store.jobs()?,"blocked":blocked,"printer_status":printer_status,"demo":app.demo,"updates":crate::updates::state(app.store.get("release_status")?)}),
             ))
+        }
+        ("GET", "/api/updates") => Ok(success(crate::updates::state(
+            app.store.get("release_status")?,
+        ))),
+        ("POST", "/api/updates/check") => {
+            // A separate limit avoids exhausting GitHub's anonymous quota through repeated clicks.
+            let last = app.store.get("release_requested")?.as_i64().unwrap_or(0);
+            if chrono::Utc::now().timestamp() - last < 60 {
+                return Err(error(429, "Wait a minute before checking again."));
+            }
+            app.store
+                .set(json!({"release_requested":chrono::Utc::now().timestamp()}))?;
+            if let Some(path) =
+                crate::updates::control_dir().filter(|p| crate::updates::connected(p))
+            {
+                crate::updates::atomic(&path.join("check.json"), &json!({"nonce":random(16)}))?;
+            } else {
+                crate::updates::check(&app.store).await?;
+            }
+            Ok(success(json!({"ok":true})))
+        }
+        ("PUT", "/api/updates/policy") | ("POST", "/api/updates/install") => {
+            let path = crate::updates::control_dir()
+                .filter(|p| crate::updates::connected(p))
+                .ok_or_else(|| {
+                    error(
+                        409,
+                        "Enable the updater on this server first. See the installation guide.",
+                    )
+                })?;
+            let status = crate::updates::read(&path.join("status.json"));
+            if status["pin"].as_str().is_some_and(|s| !s.is_empty()) {
+                return Err(error(
+                    409,
+                    "This server is pinned to a version. Remove its version pin to install updates.",
+                ));
+            }
+            if path.as_os_str().is_empty() {
+                return Err(error(409, "Updates are unavailable."));
+            }
+            if method == Method::PUT {
+                let policy: crate::updates::Policy = serde_json::from_value(body)
+                    .map_err(|_| error(422, "Choose an update preference."))?;
+                crate::updates::atomic(&path.join("policy.json"), &policy)?;
+            } else {
+                let requested = text(&body, "version", 1, 32)?;
+                let selected = crate::updates::version(requested)
+                    .map_err(|_| error(422, "Choose a stable Paperboy release."))?;
+                if selected <= crate::updates::version(env!("CARGO_PKG_VERSION")).unwrap() {
+                    return Err(error(
+                        409,
+                        "Paperboy already has this release or a newer version.",
+                    ));
+                }
+                if ["downloading", "waiting", "installing", "recovering"]
+                    .contains(&status["phase"].as_str().unwrap_or(""))
+                {
+                    return Err(error(409, "An update is already in progress."));
+                }
+                let last = app.store.get("install_requested")?.as_i64().unwrap_or(0);
+                if chrono::Utc::now().timestamp() - last < 60 {
+                    return Err(error(
+                        429,
+                        "The update was already requested. Wait a minute before retrying.",
+                    ));
+                }
+                if status["latest"] != requested {
+                    return Err(error(409, "Check for updates again before installing."));
+                }
+                crate::updates::atomic(
+                    &path.join("install.json"),
+                    &json!({"nonce":random(16),"version":requested}),
+                )?;
+                app.store
+                    .set(json!({"install_requested":chrono::Utc::now().timestamp()}))?;
+            }
+            Ok(success(json!({"ok":true})))
         }
         ("PUT", "/api/settings/email") => {
             let inbox = email(text(&body, "inbox", 1, 300)?)?;
@@ -706,6 +783,62 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let app = App::open(dir.path(), "unused".into(), false, false).unwrap();
         (dir, app)
+    }
+    #[tokio::test]
+    async fn update_controls_require_owner_and_do_not_grant_docker_access() {
+        let (_dir, app) = fixture();
+        for (method, path) in [
+            ("GET", "/api/updates"),
+            ("POST", "/api/updates/install"),
+            ("PUT", "/api/updates/policy"),
+        ] {
+            assert_eq!(
+                request(&app, method, path, json!({}), None).await.0,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        let auth = own(&app).await;
+        let updates = request(&app, "GET", "/api/updates", json!({}), Some(&auth)).await;
+        assert_eq!(updates.0, StatusCode::OK);
+        assert_eq!(updates.2["managed"], false);
+        assert_eq!(updates.2["current"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            request(
+                &app,
+                "POST",
+                "/api/updates/install",
+                json!({"version":"0.4.0"}),
+                Some(&auth)
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            request(
+                &app,
+                "PUT",
+                "/api/updates/policy",
+                json!({"automatic":true}),
+                Some(&auth)
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        let bad = (auth.0.clone(), "bad-csrf".into());
+        assert_eq!(
+            request(
+                &app,
+                "PUT",
+                "/api/updates/policy",
+                json!({"automatic":true}),
+                Some(&bad)
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
     }
     async fn own(app: &Arc<App>) -> (String, String) {
         let (status, headers, body) = request(

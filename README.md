@@ -14,10 +14,11 @@ The service and conversion tools run as native Rust binaries.
 Requires Docker with Compose, internet access, a Resend account, and a local AirPrint or IPP printer.
 
 ```sh
-git clone https://github.com/thekozugroup/Paperboy.git
-cd Paperboy
-docker compose up -d --build
-docker compose logs paperboy
+mkdir paperboy && cd paperboy
+curl -fL https://github.com/thekozugroup/Paperboy/releases/latest/download/install.sh -o install.sh
+sh install.sh
+docker compose -f compose.release.yaml --profile updates up -d
+docker compose -f compose.release.yaml logs paperboy
 ```
 
 Open **[localhost:8025](http://localhost:8025)**. Enter the setup code shown in the Docker logs,
@@ -42,7 +43,7 @@ See [Resend receiving setup](https://resend.com/docs/dashboard/receiving/introdu
 On a Linux NAS, use host networking so printer discovery can see LAN multicast:
 
 ```sh
-docker compose -f compose.yaml -f compose.linux.yaml up -d --build
+docker compose -f compose.release.yaml -f compose.linux.yaml --profile updates up -d
 ```
 
 This serves Paperboy on the NAS's IP address at port **8025**. The owner password protects
@@ -63,6 +64,24 @@ Older printers requiring proprietary drivers and USB-only printers are outside t
 To access a bridge deployment from other devices on the LAN, copy `.env.example` to `.env`
 and set `PAPERBOY_BIND=0.0.0.0`. For HTTPS behind a reverse proxy, also set
 `PAPERBOY_SECURE_COOKIE=1`. Normal setup uses HTTP on your trusted LAN.
+
+## Releases and updates
+
+Published Docker images support Linux AMD64 and ARM64. **Settings → Updates** shows your
+installed version and new stable releases. With the optional updater enabled, select
+**Install update** or turn on **Automatic updates**. Each server keeps its own preference;
+automatic updates are off by default. Set `PAPERBOY_PIN_VERSION=0.3.0` in `.env` to keep a
+server on a fixed release while other servers continue updating.
+
+Updates preserve settings, approved senders, printer configuration, and the durable print
+queue. Active prints finish before container replacement. Failed startup restores previous
+containers. The optional updater has Docker access; the web app and converter do not.
+
+See [Linux/Unraid installation and update guide](docs/updates.md) for setup, persistence,
+version pins, source-install migration, and recovery. Unraid uses a Compose stack with
+Compose v2; this release is not a Community Applications listing.
+
+For source development: clone this repository and run `docker compose up -d --build`.
 
 ## Files
 

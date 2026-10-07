@@ -1,0 +1,137 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version matching Cargo.toml (for example 0.3.0)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: paperboy-release
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yaml
+  build:
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re, tomllib
+          version = os.environ['VERSION']
+          assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+          assert tomllib.load(open('Cargo.toml', 'rb'))['package']['version'] == version
+          assert os.environ['GITHUB_REF'] == 'refs/heads/main'
+          PY
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build app
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: app
+          load: true
+          tags: ghcr.io/thekozugroup/paperboy:${{ inputs.version }}-${{ matrix.arch }}
+          build-args: PAPERBOY_VERSION=${{ inputs.version }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+      - name: Build converter
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: converter
+          load: true
+          tags: ghcr.io/thekozugroup/paperboy-converter:${{ inputs.version }}-${{ matrix.arch }}
+          build-args: PAPERBOY_VERSION=${{ inputs.version }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - name: Verify conversion on this architecture
+        env:
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker tag "ghcr.io/thekozugroup/paperboy-converter:$VERSION-$ARCH" paperboy-converter:local
+          python scripts/converter-qa.py
+          test "$(docker run --rm --entrypoint paperboy "ghcr.io/thekozugroup/paperboy:$VERSION-$ARCH" --version)" = "$VERSION"
+      - name: Publish verified architecture images
+        env:
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker push "ghcr.io/thekozugroup/paperboy:$VERSION-$ARCH"
+          docker push "ghcr.io/thekozugroup/paperboy-converter:$VERSION-$ARCH"
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create versioned manifests
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for image in paperboy paperboy-converter; do
+            docker buildx imagetools create -t "ghcr.io/thekozugroup/$image:$VERSION" "ghcr.io/thekozugroup/$image:$VERSION-amd64" "ghcr.io/thekozugroup/$image:$VERSION-arm64"
+          done
+      - name: Verify anonymous access and both platforms
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python scripts/release-qa.py
+      - name: Prepare install assets
+        run: |
+          mkdir -p release-assets
+          cp compose.release.yaml compose.linux.yaml scripts/install.sh release-assets/
+          cd release-assets
+          sha256sum compose.release.yaml compose.linux.yaml > SHA256SUMS
+      - name: Publish the release before promoting the stable channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Paperboy $VERSION" --draft --notes-file "docs/releases/$VERSION.md"
+          fi
+          gh release upload "v$VERSION" release-assets/* --clobber
+          gh release edit "v$VERSION" --draft=false --latest
+      - name: Promote stable and latest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for image in paperboy paperboy-converter; do
+            docker buildx imagetools create -t "ghcr.io/thekozugroup/$image:stable" -t "ghcr.io/thekozugroup/$image:latest" "ghcr.io/thekozugroup/$image:$VERSION"
+          done

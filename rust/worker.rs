@@ -327,7 +327,7 @@ impl Worker {
         Ok(pages)
     }
     pub async fn process_one(&self) -> Result<()> {
-        if self.store.flag("paused")? {
+        if self.store.flag("paused")? || crate::updates::draining() {
             return Ok(());
         }
         let Some(job) = self
@@ -353,6 +353,7 @@ impl Worker {
         {
             let _gate = self.gate.lock().await;
             if self.store.flag("paused")?
+                || crate::updates::draining()
                 || self
                     .store
                     .job(id)?
