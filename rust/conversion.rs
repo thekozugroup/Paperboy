@@ -229,7 +229,10 @@ pub async fn convert(source: &Path, output: &Path, paper: &str, max_pages: usize
     if !(1..=max_pages).contains(&pages) {
         bail!("This file must contain 1–{max_pages} pages.");
     }
-    for line in info.lines().filter(|line| line.contains("size:")) {
+    for line in info
+        .lines()
+        .filter(|line| line.starts_with("Page") && line.contains("size:"))
+    {
         for value in line
             .split_once("size:")
             .unwrap()

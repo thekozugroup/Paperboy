@@ -2,6 +2,18 @@
 
 Goal: a minimal Docker app that prints emailed files from approved family addresses.
 
+PDF attachment fix: accept Resend's exact `cdn.resend.app` download host. A configured
+server received a valid PDF from that host, but the attachment allowlist rejected it
+before conversion and the activity view showed generic PDF-export advice. Preserve
+HTTPS, public-address validation, DNS pinning, redirect/proxy denial and download bounds.
+Regression coverage accepts the exact CDN and rejects deceptive hosts, unrelated
+`resend.app` subdomains, credentials, HTTP and alternate ports. Production credentials,
+signed URLs, personal email data and attachment contents remain outside this repository.
+The same PDF exposed a second failure: page validation parsed `File size:` as page
+dimensions. Limit that check to `Page` size lines; retain oversized-page rejection.
+The Docker conversion fixture now contains over 14,400 bytes to cover this regression.
+Version 0.3.2 prepares these fixes for the normal coordinated release updater.
+
 Current: v0.3.1 is published and running locally from its public Docker images.
 Release source: a2963965920969e60e8aada97102691304ca1d8d.
 Release: https://github.com/thekozugroup/Paperboy/releases/tag/v0.3.1.

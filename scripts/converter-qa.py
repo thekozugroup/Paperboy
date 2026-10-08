@@ -1,5 +1,6 @@
 """Exercise the actual networkless Rust image. Test fixtures never reach a printer."""
 
+import random
 import subprocess
 import tempfile
 from pathlib import Path
@@ -39,8 +40,10 @@ def main():
                 "uri": "https://example.com",
             }
         )
-        document.embfile_add("extra.txt", b"Discard this embedded file")
+        document.embfile_add("extra.txt", random.Random(0).randbytes(20_000))
         document.save(inputs / "active.pdf")
+        # File size in bytes must not be parsed as a page dimension in points.
+        assert (inputs / "active.pdf").stat().st_size > 14_400
         document.save(
             inputs / "locked.pdf",
             encryption=pymupdf.PDF_ENCRYPT_AES_256,
@@ -52,6 +55,11 @@ def main():
         for _ in range(3):
             document.new_page()
         document.save(inputs / "too-many.pdf")
+        document.close()
+        document = pymupdf.open()
+        document.new_page(width=14_401, height=792)
+        document.save(inputs / "oversized-page.pdf")
+        document.close()
         for source in sorted(inputs.iterdir()):
             output = outputs / (source.name + ".pdf")
             limit = 2 if source.name == "too-many.pdf" else 50
@@ -87,7 +95,7 @@ def main():
                 str(limit),
             ]
             result = subprocess.run(command, capture_output=True, text=True, timeout=140)
-            if source.name in {"locked.pdf", "too-many.pdf"}:
+            if source.name in {"locked.pdf", "too-many.pdf", "oversized-page.pdf"}:
                 assert result.returncode != 0, source.name
                 assert not output.exists(), source.name
                 print(f"{source.name}: rejected")

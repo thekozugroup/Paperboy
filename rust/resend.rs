@@ -37,6 +37,7 @@ pub fn trusted_url(value: &str) -> Result<Url> {
         || url.password().is_some()
         || url.port_or_known_default() != Some(443)
         || !(host == "resend.com"
+            || host == "cdn.resend.app"
             || host.ends_with(".resend.com")
             || host.ends_with(".cloudfront.net"))
     {
@@ -286,10 +287,17 @@ mod tests {
             "https://resend.com.evil.example/file",
             "https://user:pass@resend.com/file",
             "https://resend.com:22/file",
+            "http://cdn.resend.app/file",
+            "https://cdn.resend.app.evil.example/file",
+            "https://evil.resend.app/file",
+            "https://subdomain.cdn.resend.app/file",
+            "https://user:pass@cdn.resend.app/file",
+            "https://cdn.resend.app:22/file",
         ] {
             assert!(trusted_url(url).is_err());
         }
         assert!(trusted_url("https://inbound-cdn.resend.com/file").is_ok());
+        assert!(trusted_url("https://cdn.resend.app/file?signature=synthetic").is_ok());
         for ip in [
             Ipv4Addr::LOCALHOST,
             Ipv4Addr::new(10, 0, 0, 1),
