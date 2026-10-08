@@ -21,6 +21,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
+          test -s "docs/releases/$VERSION.md"
           python3 - <<'PY'
           import os, re, tomllib
           version = os.environ['VERSION']
